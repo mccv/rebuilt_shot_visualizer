@@ -285,7 +285,7 @@ function sweepSpeedAndAngle(
   const minDescentRate = -0.5;
 
   const speedStep = speedSteps > 1 ? (maxSpeed - minSpeed) / (speedSteps - 1) : 0;
-  const angleStep = 0.05; // ~2.9°
+  const angleStep = 0.02; // ~1.1°
 
   for (let si = 0; si < speedSteps; si++) {
     const v = minSpeed + si * speedStep;
