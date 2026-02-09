@@ -414,7 +414,7 @@ function evaluateShot(fx, fy, p) {
   // Determine sweep parameters from mode
   const sMin  = p.speedMode === 'fixed' ? p.fixedSpeed : p.minSpeed;
   const sMax  = p.speedMode === 'fixed' ? p.fixedSpeed : p.maxSpeed;
-  const sSteps = p.speedMode === 'fixed' ? 1 : 10;
+  const sSteps = p.speedMode === 'fixed' ? 1 : 30;
 
   const aMin = p.angleMode === 'fixed' ? p.fixedAngle : p.minAngle;
   const aMax = p.angleMode === 'fixed' ? p.fixedAngle : p.maxAngle;
