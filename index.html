@@ -219,6 +219,16 @@
   </div>
 
   <div id="status">Ready</div>
+
+  <button id="copy-link" style="
+    width: 100%; padding: 8px 12px; margin-top: auto;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    background: #1f6feb; color: #fff; border: none; border-radius: 6px;
+    transition: background 0.15s;
+  " onmouseover="this.style.background='#388bfd'"
+     onmouseout="this.style.background='#1f6feb'">
+    Copy Shareable Link
+  </button>
 </div>
 
 <!-- ═══════════════════ CANVAS ═══════════════════ -->
@@ -829,6 +839,7 @@ function updateValueDisplays() {
 
 function scheduleRecalc() {
   updateValueDisplays();
+  pushStateToUrl();
   clearTimeout(recalcTimer);
   recalcTimer = setTimeout(() => {
     currentParams = readParams();
@@ -874,10 +885,113 @@ document.querySelectorAll('#sidebar input[type="range"], #sidebar select').forEa
 
 
 // ═══════════════════════════════════════════════════════════════
+//  DEEP LINKING — URL ↔ Control State
+// ═══════════════════════════════════════════════════════════════
+
+/** Map of URL param keys → { element id, type }. Modes handled separately. */
+const PARAM_KEYS = {
+  minSpeed:       { id: 'minSpeed',       type: 'range' },
+  maxSpeed:       { id: 'maxSpeed',       type: 'range' },
+  fixedSpeed:     { id: 'fixedSpeed',     type: 'range' },
+  minAngle:       { id: 'minAngle',       type: 'range' },
+  maxAngle:       { id: 'maxAngle',       type: 'range' },
+  fixedAngle:     { id: 'fixedAngle',     type: 'range' },
+  tangentialVelo: { id: 'tangentialVelo', type: 'range' },
+  radialVelo:     { id: 'radialVelo',     type: 'range' },
+  gridRes:        { id: 'gridRes',        type: 'range' },
+  shooterZ:       { id: 'shooterZ',       type: 'range' },
+  ceilingHeight:  { id: 'ceilingHeight',  type: 'range' },
+  targetX:        { id: 'targetX',        type: 'range' },
+  targetY:        { id: 'targetY',        type: 'range' },
+  targetZ:        { id: 'targetZ',        type: 'range' },
+  colorMode:      { id: 'colorMode',      type: 'select' },
+};
+
+/** Apply URL search params to the DOM controls. */
+function applyUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.size === 0) return;
+
+  // Mode toggles
+  ['speed', 'angle'].forEach(group => {
+    const mode = params.get(group + 'Mode');
+    if (mode && (mode === 'variable' || mode === 'fixed')) {
+      const toggle = document.querySelector(`[data-group="${group}"]`);
+      toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      const target = toggle.querySelector(`[data-mode="${mode}"]`);
+      if (target) target.classList.add('active');
+
+      if (group === 'speed') {
+        document.getElementById('speed-variable').style.display = mode === 'variable' ? '' : 'none';
+        document.getElementById('speed-fixed').style.display    = mode === 'fixed' ? '' : 'none';
+      } else {
+        document.getElementById('angle-variable').style.display = mode === 'variable' ? '' : 'none';
+        document.getElementById('angle-fixed').style.display    = mode === 'fixed' ? '' : 'none';
+      }
+    }
+  });
+
+  // Sliders and selects
+  for (const [key, { id, type }] of Object.entries(PARAM_KEYS)) {
+    const val = params.get(key);
+    if (val == null) continue;
+    const el = document.getElementById(id);
+    if (!el) continue;
+
+    if (type === 'range') {
+      const num = parseFloat(val);
+      if (!isNaN(num)) {
+        const clamped = Math.max(parseFloat(el.min), Math.min(parseFloat(el.max), num));
+        el.value = clamped;
+      }
+    } else {
+      // select — only set if the value is a valid option
+      const valid = [...el.options].some(o => o.value === val);
+      if (valid) el.value = val;
+    }
+  }
+}
+
+/** Write current control state into the URL (replaceState, no reload). */
+function pushStateToUrl() {
+  const p = new URLSearchParams();
+
+  // Modes
+  const speedMode = [...document.querySelectorAll('[data-group="speed"] button')]
+    .find(b => b.classList.contains('active'))?.dataset.mode;
+  const angleMode = [...document.querySelectorAll('[data-group="angle"] button')]
+    .find(b => b.classList.contains('active'))?.dataset.mode;
+  p.set('speedMode', speedMode);
+  p.set('angleMode', angleMode);
+
+  // Sliders and selects
+  for (const [key, { id }] of Object.entries(PARAM_KEYS)) {
+    p.set(key, document.getElementById(id).value);
+  }
+
+  const url = window.location.pathname + '?' + p.toString();
+  history.replaceState(null, '', url);
+}
+
+/** Copy the current shareable URL to clipboard. */
+document.getElementById('copy-link').addEventListener('click', () => {
+  pushStateToUrl();
+  const url = window.location.href;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('copy-link');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════
 
 function init() {
+  applyUrlParams();        // hydrate controls from URL before anything else
   computeLayout();
   updateValueDisplays();
   currentParams = readParams();
@@ -887,6 +1001,7 @@ function init() {
   document.getElementById('status').textContent =
     `${heatmapData.validCount} / ${total} valid`;
   render();
+  pushStateToUrl();        // normalize the URL on first load
 }
 
 window.addEventListener('resize', () => {
