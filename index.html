@@ -241,9 +241,10 @@
 // ═══════════════════════════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════════════
-const FIELD_LENGTH = 16.54;  // meters, X dimension
+const FIELD_LENGTH = 16.54;  // meters, X dimension (full field)
 const FIELD_WIDTH  = 8.07;   // meters, Y dimension
 const GRAVITY      = 9.8;
+const DISPLAY_BUFFER = 1.5;  // meters past target to show on field view
 
 // ═══════════════════════════════════════════════════════════════
 //  STATE
@@ -479,7 +480,8 @@ function evaluateShot(fx, fy, p) {
 
 function computeHeatmap(params) {
   const res = params.gridRes;
-  const cols = Math.ceil(FIELD_LENGTH / res);
+  const displayLength = Math.min(FIELD_LENGTH, params.targetX + DISPLAY_BUFFER);
+  const cols = Math.ceil(displayLength / res);
   const rows = Math.ceil(FIELD_WIDTH / res);
 
   const data = {
@@ -520,6 +522,9 @@ const ctx     = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
 
 function computeLayout() {
+  const targetX = parseFloat(document.getElementById('targetX').value);
+  const displayFieldLength = Math.min(FIELD_LENGTH, targetX + DISPLAY_BUFFER);
+
   const rect = canvas.parentElement.getBoundingClientRect();
   canvas.width  = rect.width  * devicePixelRatio;
   canvas.height = rect.height * devicePixelRatio;
@@ -532,13 +537,13 @@ function computeLayout() {
   const availW = cw - pad - legendSpace - pad;
   const availH = ch - 2 * pad;
 
-  const scale = Math.min(availW / FIELD_LENGTH, availH / FIELD_WIDTH);
-  const fw = FIELD_LENGTH * scale;
+  const scale = Math.min(availW / displayFieldLength, availH / FIELD_WIDTH);
+  const fw = displayFieldLength * scale;
   const fh = FIELD_WIDTH * scale;
   const ox = pad + (availW - fw) / 2;  // left edge of field on canvas
   const oy = pad + (availH - fh) / 2;  // top edge of field on canvas
 
-  layoutCache = { cw, ch, pad, scale, fw, fh, ox, oy, legendX: ox + fw + 20 };
+  layoutCache = { cw, ch, pad, scale, fw, fh, ox, oy, legendX: ox + fw + 20, displayFieldLength };
 }
 
 /**
@@ -617,9 +622,10 @@ function render() {
   }
 
   // ── Grid lines every 1m ──
+  const dfl = layoutCache.displayFieldLength;
   ctx.strokeStyle = 'rgba(60, 100, 60, 0.35)';
   ctx.lineWidth = 0.5;
-  for (let x = 0; x <= FIELD_LENGTH; x++) {
+  for (let x = 0; x <= dfl; x++) {
     const [px] = fieldToCanvas(x, 0);
     ctx.beginPath(); ctx.moveTo(px, oy); ctx.lineTo(px, oy + fh); ctx.stroke();
   }
@@ -633,23 +639,21 @@ function render() {
   ctx.lineWidth = 2;
   ctx.strokeRect(ox, oy, fw, fh);
 
-  // ── Alliance walls ──
-  // Blue wall (right side, field x=0)
+  // ── Alliance wall (Blue, right side, field x=0) ──
   const [bx] = fieldToCanvas(0, 0);
   ctx.fillStyle = 'rgba(31, 111, 235, 0.3)';
   ctx.fillRect(bx - 4, oy, 8, fh);
-  // Red wall (left side, field x=16.54)
-  const [rx] = fieldToCanvas(FIELD_LENGTH, 0);
-  ctx.fillStyle = 'rgba(248, 81, 73, 0.3)';
-  ctx.fillRect(rx - 4, oy, 8, fh);
 
-  // ── Center line ──
-  const [mx] = fieldToCanvas(FIELD_LENGTH / 2, 0);
-  ctx.setLineDash([6, 4]);
-  ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(mx, oy); ctx.lineTo(mx, oy + fh); ctx.stroke();
-  ctx.setLineDash([]);
+  // ── Center line (only if within display range) ──
+  const halfField = FIELD_LENGTH / 2;
+  if (halfField <= dfl) {
+    const [mx] = fieldToCanvas(halfField, 0);
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(mx, oy); ctx.lineTo(mx, oy + fh); ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   // ── Hub target marker ──
   const tgtX = parseFloat(document.getElementById('targetX').value);
@@ -678,7 +682,7 @@ function render() {
 
   // X labels along bottom
   ctx.textAlign = 'center';
-  for (let x = 0; x <= FIELD_LENGTH; x += 2) {
+  for (let x = 0; x <= dfl; x += 2) {
     const [px] = fieldToCanvas(x, 0);
     ctx.fillText(x + 'm', px, oy + fh + 16);
   }
@@ -690,13 +694,11 @@ function render() {
     ctx.fillText(y + 'm', px + 10, py + 4);
   }
 
-  // Alliance labels
+  // Alliance label
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillStyle = '#58a6ff';
   ctx.fillText('BLUE', bx, oy - 8);
-  ctx.fillStyle = '#f85149';
-  ctx.fillText('RED', rx, oy - 8);
 
   // ── Legend ──
   if (heatmapData && heatmapData.validCount > 0) {
@@ -748,8 +750,8 @@ canvas.addEventListener('pointermove', (e) => {
   const cy = e.clientY - rect.top;
   const [fx, fy] = canvasToField(cx, cy);
 
-  // Out of field bounds?
-  if (fx < 0 || fx > FIELD_LENGTH || fy < 0 || fy > FIELD_WIDTH) {
+  // Out of displayed field bounds?
+  if (fx < 0 || fx > (layoutCache.displayFieldLength || FIELD_LENGTH) || fy < 0 || fy > FIELD_WIDTH) {
     tooltip.style.display = 'none';
     return;
   }
@@ -846,6 +848,7 @@ function scheduleRecalc() {
     document.getElementById('status').textContent = 'Computing...';
 
     requestAnimationFrame(() => {
+      computeLayout();
       const t0 = performance.now();
       heatmapData = computeHeatmap(currentParams);
       const dt = (performance.now() - t0).toFixed(0);
