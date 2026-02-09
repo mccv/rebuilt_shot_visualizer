@@ -188,13 +188,18 @@
     </div>
     <div class="control-row">
       <label>Shooter Z</label>
-      <input type="range" id="shooterZ" min="0" max="1.0" step="0.01" value="0.0">
+      <input type="range" id="shooterZ" min="0" max="1.0" step="0.01" value="0.48">
       <span class="value" id="shooterZ-val">0.00 m</span>
     </div>
     <div class="control-row">
       <label>Ceiling</label>
       <input type="range" id="ceilingHeight" min="3" max="15" step="0.1" value="7.0">
       <span class="value" id="ceilingHeight-val">7.0 m</span>
+    </div>
+    <div class="control-row">
+      <label>Max Vy @&nbsp;Target</label>
+      <input type="range" id="maxVyAtTarget" min="-10" max="0" step="0.1" value="-0.5">
+      <span class="value" id="maxVyAtTarget-val">-0.5 m/s</span>
     </div>
   </div>
 
@@ -457,16 +462,18 @@ function evaluateShot(fx, fy, p) {
   if (heightError > tolerance) return null;
 
   const vyAtTarget = speed * sinA - GRAVITY * t;
-  const isDescending = vyAtTarget < 0;
   const apexHeight = p.shooterZ + (speed * sinA) ** 2 / (2 * GRAVITY);
 
   if (apexHeight > p.ceilingHeight) return null;
+
+  // Must be descending at least as fast as the threshold (maxVyAtTarget is negative)
+  if (vyAtTarget > p.maxVyAtTarget) return null;
 
   return {
     shotSpeed: speed,
     hoodAngleDeg: angle * 180 / Math.PI,
     flightTime: t,
-    isDescending,
+    vyAtTarget,
     apexHeight,
     heightError,
     range
@@ -608,11 +615,11 @@ function render() {
         if (colorMode === 'speed') {
           const range = maxSpeed - minSpeed;
           t = range > 0.01 ? (result.shotSpeed - minSpeed) / range : 0.5;
-          color = speedColor(t, result.isDescending ? 0.8 : 0.4);
+          color = speedColor(t, 0.8);
         } else {
           const range = maxAngle - minAngle;
           t = range > 0.01 ? (result.hoodAngleDeg - minAngle) / range : 0.5;
-          color = angleColor(t, result.isDescending ? 0.8 : 0.4);
+          color = angleColor(t, 0.8);
         }
 
         ctx.fillStyle = color;
@@ -732,10 +739,6 @@ function render() {
       ctx.fillText('Angle', lx - 2, ly - 6);
     }
 
-    // Descending legend note
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '10px sans-serif';
-    ctx.fillText('Dim = ascending', lx - 2, ly + lh + 16);
   }
 }
 
@@ -756,10 +759,20 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
 
-  // Evaluate this specific position
-  const result = evaluateShot(fx, fy, currentParams);
+  // Look up the precomputed cell result instead of re-evaluating
+  let result = null;
+  let cellFx = fx, cellFy = fy;
+  if (heatmapData) {
+    const col = Math.floor(fx / heatmapData.res);
+    const row = Math.floor(fy / heatmapData.res);
+    if (row >= 0 && row < heatmapData.rows && col >= 0 && col < heatmapData.cols) {
+      result = heatmapData.results[row][col];
+      cellFx = (col + 0.5) * heatmapData.res;
+      cellFy = (row + 0.5) * heatmapData.res;
+    }
+  }
 
-  let html = `<div class="tt-header">Position: (${fx.toFixed(2)}, ${fy.toFixed(2)}) m</div>`;
+  let html = `<div class="tt-header">Cell: (${cellFx.toFixed(2)}, ${cellFy.toFixed(2)}) m</div>`;
   if (result) {
     html += `<div class="tt-valid">✓ Valid Shot</div>`;
     html += `<div class="tt-row">Speed: ${result.shotSpeed.toFixed(1)} m/s</div>`;
@@ -767,7 +780,7 @@ canvas.addEventListener('pointermove', (e) => {
     html += `<div class="tt-row">Flight Time: ${result.flightTime.toFixed(3)} s</div>`;
     html += `<div class="tt-row">Range: ${result.range.toFixed(2)} m</div>`;
     html += `<div class="tt-row">Apex: ${result.apexHeight.toFixed(2)} m</div>`;
-    html += `<div class="tt-row">${result.isDescending ? 'Descending ↓' : 'Ascending ↑'}</div>`;
+    html += `<div class="tt-row">Vy at target: ${result.vyAtTarget.toFixed(2)} m/s ↓</div>`;
   } else {
     html += `<div class="tt-invalid">✗ No Valid Shot</div>`;
   }
@@ -819,6 +832,7 @@ function readParams() {
     targetX:        parseFloat(document.getElementById('targetX').value),
     targetY:        parseFloat(document.getElementById('targetY').value),
     targetZ:        parseFloat(document.getElementById('targetZ').value),
+    maxVyAtTarget:  parseFloat(document.getElementById('maxVyAtTarget').value),
   };
 }
 
@@ -837,6 +851,7 @@ function updateValueDisplays() {
   document.getElementById('targetX-val').textContent        = parseFloat(document.getElementById('targetX').value).toFixed(2) + ' m';
   document.getElementById('targetY-val').textContent        = parseFloat(document.getElementById('targetY').value).toFixed(2) + ' m';
   document.getElementById('targetZ-val').textContent        = parseFloat(document.getElementById('targetZ').value).toFixed(2) + ' m';
+  document.getElementById('maxVyAtTarget-val').textContent   = parseFloat(document.getElementById('maxVyAtTarget').value).toFixed(1) + ' m/s';
 }
 
 function scheduleRecalc() {
@@ -907,6 +922,7 @@ const PARAM_KEYS = {
   targetX:        { id: 'targetX',        type: 'range' },
   targetY:        { id: 'targetY',        type: 'range' },
   targetZ:        { id: 'targetZ',        type: 'range' },
+  maxVyAtTarget:  { id: 'maxVyAtTarget',  type: 'range' },
   colorMode:      { id: 'colorMode',      type: 'select' },
 };
 
