@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shot Visualizer – Team 1700</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; height: 100vh; overflow: hidden;
+      background: #0d1117; color: #c9d1d9;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────── */
+    #sidebar {
+      width: 320px; min-width: 320px;
+      background: #161b22; border-right: 1px solid #30363d;
+      overflow-y: auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    #sidebar h1 {
+      font-size: 18px; font-weight: 600; color: #58a6ff;
+      border-bottom: 1px solid #30363d; padding-bottom: 8px;
+    }
+    .control-group {
+      background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px;
+    }
+    .control-group h2 {
+      font-size: 13px; font-weight: 600; color: #58a6ff;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .control-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .control-row:last-child { margin-bottom: 0; }
+    .control-row label {
+      font-size: 12px; color: #8b949e; min-width: 90px; flex-shrink: 0;
+    }
+    .control-row input[type="range"] { flex: 1; min-width: 0; }
+    .control-row .value {
+      font-size: 12px; color: #e6edf3; min-width: 52px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .mode-toggle {
+      display: flex; gap: 4px; margin-bottom: 8px;
+    }
+    .mode-toggle button {
+      flex: 1; padding: 4px 8px; font-size: 11px; font-weight: 600;
+      border: 1px solid #30363d; border-radius: 4px;
+      background: #0d1117; color: #8b949e; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .mode-toggle button.active {
+      background: #1f6feb; color: #fff; border-color: #1f6feb;
+    }
+    select {
+      background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 4px; padding: 3px 6px; font-size: 12px; flex: 1;
+    }
+    #status {
+      font-size: 11px; color: #8b949e; text-align: center; padding: 4px;
+    }
+
+    /* ── Canvas area ─────────────────────────────────── */
+    #canvas-container {
+      flex: 1; position: relative; overflow: hidden;
+    }
+    #field-canvas { display: block; width: 100%; height: 100%; }
+    #tooltip {
+      position: absolute; pointer-events: none; display: none;
+      background: rgba(22, 27, 34, 0.95); border: 1px solid #30363d;
+      border-radius: 6px; padding: 8px 10px; font-size: 12px;
+      line-height: 1.5; white-space: nowrap; z-index: 10;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    #tooltip .tt-header { color: #58a6ff; font-weight: 600; margin-bottom: 2px; }
+    #tooltip .tt-valid { color: #3fb950; }
+    #tooltip .tt-invalid { color: #f85149; }
+    #tooltip .tt-row { color: #c9d1d9; }
+
+    /* ── Slider styling ──────────────────────────────── */
+    input[type="range"] {
+      -webkit-appearance: none; height: 4px; border-radius: 2px;
+      background: #30363d; outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: #58a6ff; cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #58a6ff; cursor: pointer; border: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+<div id="sidebar">
+  <h1>Shot Visualizer – 1700</h1>
+
+  <!-- Shot Speed -->
+  <div class="control-group">
+    <h2>Shot Speed</h2>
+    <div class="mode-toggle" data-group="speed">
+      <button class="active" data-mode="variable">Variable</button>
+      <button data-mode="fixed">Fixed</button>
+    </div>
+    <div id="speed-variable">
+      <div class="control-row">
+        <label>Min Speed</label>
+        <input type="range" id="minSpeed" min="1" max="30" step="0.1" value="8.5">
+        <span class="value" id="minSpeed-val">8.5 m/s</span>
+      </div>
+      <div class="control-row">
+        <label>Max Speed</label>
+        <input type="range" id="maxSpeed" min="1" max="30" step="0.1" value="21.3">
+        <span class="value" id="maxSpeed-val">21.3 m/s</span>
+      </div>
+    </div>
+    <div id="speed-fixed" style="display:none;">
+      <div class="control-row">
+        <label>Shot Speed</label>
+        <input type="range" id="fixedSpeed" min="1" max="30" step="0.1" value="15">
+        <span class="value" id="fixedSpeed-val">15.0 m/s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hood Angle -->
+  <div class="control-group">
+    <h2>Hood Angle</h2>
+    <div class="mode-toggle" data-group="angle">
+      <button class="active" data-mode="variable">Variable</button>
+      <button data-mode="fixed">Fixed</button>
+    </div>
+    <div id="angle-variable">
+      <div class="control-row">
+        <label>Min Angle</label>
+        <input type="range" id="minAngle" min="5" max="85" step="0.5" value="5">
+        <span class="value" id="minAngle-val">5.0°</span>
+      </div>
+      <div class="control-row">
+        <label>Max Angle</label>
+        <input type="range" id="maxAngle" min="5" max="85" step="0.5" value="85">
+        <span class="value" id="maxAngle-val">85.0°</span>
+      </div>
+    </div>
+    <div id="angle-fixed" style="display:none;">
+      <div class="control-row">
+        <label>Hood Angle</label>
+        <input type="range" id="fixedAngle" min="5" max="85" step="0.5" value="45">
+        <span class="value" id="fixedAngle-val">45.0°</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Robot Velocity -->
+  <div class="control-group">
+    <h2>Robot Velocity</h2>
+    <div class="control-row">
+      <label>Tangential</label>
+      <input type="range" id="tangentialVelo" min="0" max="5" step="0.1" value="0">
+      <span class="value" id="tangentialVelo-val">0.0 m/s</span>
+    </div>
+    <div class="control-row">
+      <label>Radial</label>
+      <input type="range" id="radialVelo" min="-3" max="3" step="0.1" value="0">
+      <span class="value" id="radialVelo-val">0.0 m/s</span>
+    </div>
+  </div>
+
+  <!-- Visualization -->
+  <div class="control-group">
+    <h2>Visualization</h2>
+    <div class="control-row">
+      <label>Color Mode</label>
+      <select id="colorMode">
+        <option value="speed">Shot Speed</option>
+        <option value="angle">Hood Angle</option>
+      </select>
+    </div>
+    <div class="control-row">
+      <label>Grid Res.</label>
+      <input type="range" id="gridRes" min="0.1" max="0.5" step="0.05" value="0.2">
+      <span class="value" id="gridRes-val">0.20 m</span>
+    </div>
+    <div class="control-row">
+      <label>Shooter Z</label>
+      <input type="range" id="shooterZ" min="0" max="1.0" step="0.01" value="0.0">
+      <span class="value" id="shooterZ-val">0.00 m</span>
+    </div>
+    <div class="control-row">
+      <label>Ceiling</label>
+      <input type="range" id="ceilingHeight" min="3" max="15" step="0.1" value="7.0">
+      <span class="value" id="ceilingHeight-val">7.0 m</span>
+    </div>
+  </div>
+
+  <!-- Target -->
+  <div class="control-group">
+    <h2>Target (Blue Hub)</h2>
+    <div class="control-row">
+      <label>Target X</label>
+      <input type="range" id="targetX" min="0" max="16.54" step="0.01" value="4.625594">
+      <span class="value" id="targetX-val">4.63 m</span>
+    </div>
+    <div class="control-row">
+      <label>Target Y</label>
+      <input type="range" id="targetY" min="0" max="8.07" step="0.01" value="4.034663">
+      <span class="value" id="targetY-val">4.03 m</span>
+    </div>
+    <div class="control-row">
+      <label>Target Z</label>
+      <input type="range" id="targetZ" min="0.5" max="4" step="0.01" value="1.60">
+      <span class="value" id="targetZ-val">1.60 m</span>
+    </div>
+  </div>
+
+  <div id="status">Ready</div>
+</div>
+
+<!-- ═══════════════════ CANVAS ═══════════════════ -->
+<div id="canvas-container">
+  <canvas id="field-canvas"></canvas>
+  <div id="tooltip"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const FIELD_LENGTH = 16.54;  // meters, X dimension
+const FIELD_WIDTH  = 8.07;   // meters, Y dimension
+const GRAVITY      = 9.8;
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+let heatmapData = null;  // 2D array of results
+let layoutCache = {};    // canvas layout geometry
+let currentParams = {};  // current control values
+let recalcTimer = null;
+
+// ═══════════════════════════════════════════════════════════════
+//  PHYSICS ENGINE  (ported from ShotCalculator.java)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 2D sweep over (speed, angle) to find the best starting point for Newton.
+ * Prefers descending trajectories under the ceiling with smallest height error.
+ *
+ * Directly ported from ShotCalculator.sweepSpeedAndAngle().
+ */
+function sweepSpeedAndAngle(
+    minSpeed, maxSpeed, speedSteps,
+    minAngleDeg, maxAngleDeg,
+    tangentialVelo, radialVelo,
+    range, heightDiff, shooterZ, ceilingHeight
+) {
+  const minAngle = minAngleDeg * Math.PI / 180;
+  const maxAngle = maxAngleDeg * Math.PI / 180;
+
+  let bestSpeed = (minSpeed + maxSpeed) / 2;
+  let bestAngle = (minAngle + maxAngle) / 2;
+  let bestError = Infinity;
+  let foundDescending = false;
+  const minDescentRate = -0.5;
+
+  const speedStep = speedSteps > 1 ? (maxSpeed - minSpeed) / (speedSteps - 1) : 0;
+  const angleStep = 0.05; // ~2.9°
+
+  for (let si = 0; si < speedSteps; si++) {
+    const v = minSpeed + si * speedStep;
+
+    for (let a = minAngle; a <= maxAngle + 0.001; a += angleStep) {
+      const angle = Math.min(a, maxAngle);
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+
+      // Ceiling check: apex = shooterZ + (v·sinθ)² / (2g)
+      const vVert = v * sinA;
+      const apex = shooterZ + (vVert * vVert) / (2 * GRAVITY);
+      if (apex > ceilingHeight) continue;
+
+      const hSpeed = v * cosA;
+      const turretAdj = Math.atan2(-tangentialVelo, hSpeed);
+      const effSpeed = hSpeed * Math.cos(turretAdj) + radialVelo;
+      if (effSpeed <= 0.1) continue;
+
+      const t = range / effSpeed;
+      const h = v * sinA * t - 0.5 * GRAVITY * t * t;
+      const err = Math.abs(h - heightDiff);
+      const vyTarget = v * sinA - GRAVITY * t;
+      const desc = vyTarget < minDescentRate;
+
+      if (desc) {
+        if (!foundDescending || err < bestError) {
+          bestError = err;
+          bestSpeed = v;
+          bestAngle = angle;
+          foundDescending = true;
+        }
+      } else if (!foundDescending && err < bestError) {
+        bestError = err;
+        bestSpeed = v;
+        bestAngle = angle;
+      }
+
+      // Fixed angle: one iteration only
+      if (maxAngle - minAngle < 0.002) break;
+    }
+  }
+
+  return { speed: bestSpeed, angle: bestAngle, error: bestError };
+}
+
+/**
+ * Newton's-method refinement of launch angle at a fixed speed.
+ *
+ * Directly ported from ShotCalculator.refineAngle().
+ */
+function refineAngle(
+    speed, initialTheta,
+    tangentialVelo, radialVelo,
+    range, heightDiff,
+    clampMinDeg, clampMaxDeg
+) {
+  const clampMin = Math.max(clampMinDeg * Math.PI / 180, 0.05);
+  const clampMax = Math.min(clampMaxDeg * Math.PI / 180, Math.PI / 2 - 0.05);
+
+  let theta = initialTheta;
+  let shotTime = 0;
+  let turretAdjRad = 0;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (let i = 0; i < 20; i++) {
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+      const hSpeed = speed * cosT;
+
+      turretAdjRad = Math.atan2(-tangentialVelo, hSpeed);
+      const cosTurret = Math.cos(turretAdjRad);
+      const effRadSpeed = hSpeed * cosTurret + radialVelo;
+
+      if (effRadSpeed <= 0.1) {
+        theta = Math.max(theta - 0.1, clampMin);
+        continue;
+      }
+
+      shotTime = range / effRadSpeed;
+      const h = speed * sinT * shotTime - 0.5 * GRAVITY * shotTime * shotTime;
+      const error = h - heightDiff;
+
+      if (Math.abs(error) < 0.001) break;
+
+      // Finite-difference derivative dH/dθ
+      const dTheta = 0.0001;
+      const cosTp = Math.cos(theta + dTheta);
+      const sinTp = Math.sin(theta + dTheta);
+      const hSpeedP = speed * cosTp;
+      const turretP = Math.atan2(-tangentialVelo, hSpeedP);
+      const effP = hSpeedP * Math.cos(turretP) + radialVelo;
+      const tP = effP > 0.1 ? range / effP : shotTime;
+      const hP = speed * sinTp * tP - 0.5 * GRAVITY * tP * tP;
+
+      const dH = (hP - h) / dTheta;
+      if (Math.abs(dH) < 0.0001) break;
+
+      theta -= error / dH;
+      theta = Math.max(clampMin, Math.min(clampMax, theta));
+    }
+
+    // Check if converged solution is descending
+    const vy = speed * Math.sin(theta) - GRAVITY * shotTime;
+    if (vy < 0) break; // descending — done
+
+    // Ascending — bump steeper and retry once
+    theta = Math.min(theta + 0.15, clampMax);
+  }
+
+  return { angle: theta, shotTime, turretAdjRad };
+}
+
+/**
+ * Evaluate whether a shot from field position (fx, fy) can reach the target.
+ * Returns an object with shot details, or null if invalid.
+ */
+function evaluateShot(fx, fy, p) {
+  const dx = p.targetX - fx;
+  const dy = p.targetY - fy;
+  const range = Math.sqrt(dx * dx + dy * dy);
+  const heightDiff = p.targetZ - p.shooterZ;
+
+  if (range < 0.3) return null; // too close to target
+
+  // Determine sweep parameters from mode
+  const sMin  = p.speedMode === 'fixed' ? p.fixedSpeed : p.minSpeed;
+  const sMax  = p.speedMode === 'fixed' ? p.fixedSpeed : p.maxSpeed;
+  const sSteps = p.speedMode === 'fixed' ? 1 : 10;
+
+  const aMin = p.angleMode === 'fixed' ? p.fixedAngle : p.minAngle;
+  const aMax = p.angleMode === 'fixed' ? p.fixedAngle : p.maxAngle;
+
+  // Use finer speed sweep when angle is fixed (more resolution needed)
+  const actualSpeedSteps = (p.angleMode === 'fixed' && p.speedMode !== 'fixed') ? 30 : sSteps;
+
+  // Sweep
+  const sweep = sweepSpeedAndAngle(
+    sMin, sMax, actualSpeedSteps,
+    aMin, aMax,
+    p.tangentialVelo, p.radialVelo,
+    range, heightDiff, p.shooterZ, p.ceilingHeight
+  );
+
+  let speed = sweep.speed;
+  let angle = sweep.angle;
+
+  // Newton refinement (only when angle is variable)
+  if (p.angleMode !== 'fixed') {
+    const ref = refineAngle(
+      speed, angle,
+      p.tangentialVelo, p.radialVelo,
+      range, heightDiff,
+      aMin, aMax
+    );
+    angle = ref.angle;
+  }
+
+  // Final validation
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const hSpeed = speed * cosA;
+  const turretAdj = Math.atan2(-p.tangentialVelo, hSpeed);
+  const effRadSpeed = hSpeed * Math.cos(turretAdj) + p.radialVelo;
+
+  if (effRadSpeed <= 0.1) return null;
+
+  const t = range / effRadSpeed;
+  const h = speed * sinA * t - 0.5 * GRAVITY * t * t;
+  const heightError = Math.abs(h - heightDiff);
+
+  // Tighter tolerance when Newton was used, looser for fixed angle
+  const tolerance = p.angleMode === 'fixed' ? 0.15 : 0.05;
+  if (heightError > tolerance) return null;
+
+  const vyAtTarget = speed * sinA - GRAVITY * t;
+  const isDescending = vyAtTarget < 0;
+  const apexHeight = p.shooterZ + (speed * sinA) ** 2 / (2 * GRAVITY);
+
+  if (apexHeight > p.ceilingHeight) return null;
+
+  return {
+    shotSpeed: speed,
+    hoodAngleDeg: angle * 180 / Math.PI,
+    flightTime: t,
+    isDescending,
+    apexHeight,
+    heightError,
+    range
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  HEATMAP COMPUTATION
+// ═══════════════════════════════════════════════════════════════
+
+function computeHeatmap(params) {
+  const res = params.gridRes;
+  const cols = Math.ceil(FIELD_LENGTH / res);
+  const rows = Math.ceil(FIELD_WIDTH / res);
+
+  const data = {
+    cols, rows, res, results: [],
+    minSpeed: Infinity, maxSpeed: -Infinity,
+    minAngle: Infinity, maxAngle: -Infinity,
+    validCount: 0
+  };
+
+  for (let r = 0; r < rows; r++) {
+    data.results[r] = [];
+    for (let c = 0; c < cols; c++) {
+      const fx = (c + 0.5) * res;
+      const fy = (r + 0.5) * res;
+      const result = evaluateShot(fx, fy, params);
+      data.results[r][c] = result;
+
+      if (result) {
+        data.validCount++;
+        data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
+        data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
+        data.minAngle = Math.min(data.minAngle, result.hoodAngleDeg);
+        data.maxAngle = Math.max(data.maxAngle, result.hoodAngleDeg);
+      }
+    }
+  }
+
+  return data;
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDERING
+// ═══════════════════════════════════════════════════════════════
+
+const canvas  = document.getElementById('field-canvas');
+const ctx     = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+
+function computeLayout() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width  = rect.width  * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  const cw = rect.width;
+  const ch = rect.height;
+  const pad = 50;
+  const legendSpace = 80;
+  const availW = cw - pad - legendSpace - pad;
+  const availH = ch - 2 * pad;
+
+  const scale = Math.min(availW / FIELD_LENGTH, availH / FIELD_WIDTH);
+  const fw = FIELD_LENGTH * scale;
+  const fh = FIELD_WIDTH * scale;
+  const ox = pad + (availW - fw) / 2;  // left edge of field on canvas
+  const oy = pad + (availH - fh) / 2;  // top edge of field on canvas
+
+  layoutCache = { cw, ch, pad, scale, fw, fh, ox, oy, legendX: ox + fw + 20 };
+}
+
+/**
+ * Convert field coordinates to canvas pixel coordinates.
+ * Field: (0,0) top-right, X left, Y down.
+ * Canvas: (0,0) top-left, X right, Y down.
+ */
+function fieldToCanvas(fx, fy) {
+  const { ox, scale, fw } = layoutCache;
+  return [
+    ox + fw - fx * scale,   // field x=0 → right edge; x=16.54 → left edge
+    layoutCache.oy + fy * scale  // field y=0 → top; y=8.07 → bottom
+  ];
+}
+
+function canvasToField(cx, cy) {
+  const { ox, oy, scale, fw } = layoutCache;
+  return [
+    (fw - (cx - ox)) / scale,
+    (cy - oy) / scale
+  ];
+}
+
+/** HSL-based color ramp for shot speed: blue (low) → red (high) */
+function speedColor(t, alpha) {
+  const h = 240 - t * 240; // 240=blue → 0=red
+  return `hsla(${h}, 85%, 55%, ${alpha})`;
+}
+
+/** HSL-based color ramp for hood angle: green (shallow) → orange (steep) */
+function angleColor(t, alpha) {
+  const h = 130 - t * 100; // 130=green → 30=orange
+  return `hsla(${h}, 80%, 50%, ${alpha})`;
+}
+
+function render() {
+  const { cw, ch, scale, fw, fh, ox, oy, legendX } = layoutCache;
+  const colorMode = document.getElementById('colorMode').value;
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  // ── Field background ──
+  ctx.fillStyle = '#0f1f0f';
+  ctx.fillRect(ox, oy, fw, fh);
+
+  // ── Heatmap cells ──
+  if (heatmapData) {
+    const { cols, rows, res, results, minSpeed, maxSpeed, minAngle, maxAngle } = heatmapData;
+    const cellW = res * scale;
+    const cellH = res * scale;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const result = results[r][c];
+        if (!result) continue;
+
+        const fx = (c + 0.5) * res;
+        const fy = (r + 0.5) * res;
+        const [px, py] = fieldToCanvas(fx, fy);
+
+        let t, color;
+        if (colorMode === 'speed') {
+          const range = maxSpeed - minSpeed;
+          t = range > 0.01 ? (result.shotSpeed - minSpeed) / range : 0.5;
+          color = speedColor(t, result.isDescending ? 0.8 : 0.4);
+        } else {
+          const range = maxAngle - minAngle;
+          t = range > 0.01 ? (result.hoodAngleDeg - minAngle) / range : 0.5;
+          color = angleColor(t, result.isDescending ? 0.8 : 0.4);
+        }
+
+        ctx.fillStyle = color;
+        ctx.fillRect(px - cellW / 2, py - cellH / 2, cellW, cellH);
+      }
+    }
+  }
+
+  // ── Grid lines every 1m ──
+  ctx.strokeStyle = 'rgba(60, 100, 60, 0.35)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= FIELD_LENGTH; x++) {
+    const [px] = fieldToCanvas(x, 0);
+    ctx.beginPath(); ctx.moveTo(px, oy); ctx.lineTo(px, oy + fh); ctx.stroke();
+  }
+  for (let y = 0; y <= FIELD_WIDTH; y++) {
+    const [, py] = fieldToCanvas(0, y);
+    ctx.beginPath(); ctx.moveTo(ox, py); ctx.lineTo(ox + fw, py); ctx.stroke();
+  }
+
+  // ── Field border ──
+  ctx.strokeStyle = '#3fb950';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(ox, oy, fw, fh);
+
+  // ── Alliance walls ──
+  // Blue wall (right side, field x=0)
+  const [bx] = fieldToCanvas(0, 0);
+  ctx.fillStyle = 'rgba(31, 111, 235, 0.3)';
+  ctx.fillRect(bx - 4, oy, 8, fh);
+  // Red wall (left side, field x=16.54)
+  const [rx] = fieldToCanvas(FIELD_LENGTH, 0);
+  ctx.fillStyle = 'rgba(248, 81, 73, 0.3)';
+  ctx.fillRect(rx - 4, oy, 8, fh);
+
+  // ── Center line ──
+  const [mx] = fieldToCanvas(FIELD_LENGTH / 2, 0);
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(mx, oy); ctx.lineTo(mx, oy + fh); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Hub target marker ──
+  const tgtX = parseFloat(document.getElementById('targetX').value);
+  const tgtY = parseFloat(document.getElementById('targetY').value);
+  const [hx, hy] = fieldToCanvas(tgtX, tgtY);
+
+  ctx.beginPath();
+  ctx.arc(hx, hy, 8, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(88, 166, 255, 0.6)';
+  ctx.fill();
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Crosshair
+  ctx.beginPath();
+  ctx.moveTo(hx - 12, hy); ctx.lineTo(hx + 12, hy);
+  ctx.moveTo(hx, hy - 12); ctx.lineTo(hx, hy + 12);
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ── Axis labels ──
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '11px sans-serif';
+
+  // X labels along bottom
+  ctx.textAlign = 'center';
+  for (let x = 0; x <= FIELD_LENGTH; x += 2) {
+    const [px] = fieldToCanvas(x, 0);
+    ctx.fillText(x + 'm', px, oy + fh + 16);
+  }
+
+  // Y labels along right side
+  ctx.textAlign = 'left';
+  for (let y = 0; y <= FIELD_WIDTH; y += 2) {
+    const [px, py] = fieldToCanvas(0, y);
+    ctx.fillText(y + 'm', px + 10, py + 4);
+  }
+
+  // Alliance labels
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#58a6ff';
+  ctx.fillText('BLUE', bx, oy - 8);
+  ctx.fillStyle = '#f85149';
+  ctx.fillText('RED', rx, oy - 8);
+
+  // ── Legend ──
+  if (heatmapData && heatmapData.validCount > 0) {
+    const lx = legendX;
+    const ly = oy;
+    const lw = 18;
+    const lh = fh;
+
+    const colorFn = colorMode === 'speed' ? speedColor : angleColor;
+    for (let i = 0; i < lh; i++) {
+      const t = 1 - i / lh;  // top = high value
+      ctx.fillStyle = colorFn(t, 0.9);
+      ctx.fillRect(lx, ly + i, lw, 1);
+    }
+
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(lx, ly, lw, lh);
+
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+
+    if (colorMode === 'speed') {
+      ctx.fillText(heatmapData.maxSpeed.toFixed(1) + ' m/s', lx + lw + 5, ly + 11);
+      ctx.fillText(heatmapData.minSpeed.toFixed(1) + ' m/s', lx + lw + 5, ly + lh);
+      ctx.fillText('Speed', lx - 2, ly - 6);
+    } else {
+      ctx.fillText(heatmapData.maxAngle.toFixed(1) + '°', lx + lw + 5, ly + 11);
+      ctx.fillText(heatmapData.minAngle.toFixed(1) + '°', lx + lw + 5, ly + lh);
+      ctx.fillText('Angle', lx - 2, ly - 6);
+    }
+
+    // Descending legend note
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Dim = ascending', lx - 2, ly + lh + 16);
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  TOOLTIP
+// ═══════════════════════════════════════════════════════════════
+
+canvas.addEventListener('pointermove', (e) => {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const [fx, fy] = canvasToField(cx, cy);
+
+  // Out of field bounds?
+  if (fx < 0 || fx > FIELD_LENGTH || fy < 0 || fy > FIELD_WIDTH) {
+    tooltip.style.display = 'none';
+    return;
+  }
+
+  // Evaluate this specific position
+  const result = evaluateShot(fx, fy, currentParams);
+
+  let html = `<div class="tt-header">Position: (${fx.toFixed(2)}, ${fy.toFixed(2)}) m</div>`;
+  if (result) {
+    html += `<div class="tt-valid">✓ Valid Shot</div>`;
+    html += `<div class="tt-row">Speed: ${result.shotSpeed.toFixed(1)} m/s</div>`;
+    html += `<div class="tt-row">Hood Angle: ${result.hoodAngleDeg.toFixed(1)}°</div>`;
+    html += `<div class="tt-row">Flight Time: ${result.flightTime.toFixed(3)} s</div>`;
+    html += `<div class="tt-row">Range: ${result.range.toFixed(2)} m</div>`;
+    html += `<div class="tt-row">Apex: ${result.apexHeight.toFixed(2)} m</div>`;
+    html += `<div class="tt-row">${result.isDescending ? 'Descending ↓' : 'Ascending ↑'}</div>`;
+  } else {
+    html += `<div class="tt-invalid">✗ No Valid Shot</div>`;
+  }
+
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+
+  // Position tooltip avoiding edge overflow
+  const ttRect = tooltip.getBoundingClientRect();
+  let tx = e.clientX - rect.left + 14;
+  let ty = e.clientY - rect.top - 10;
+  if (tx + ttRect.width > rect.width) tx = e.clientX - rect.left - ttRect.width - 14;
+  if (ty + ttRect.height > rect.height) ty = rect.height - ttRect.height - 4;
+  if (ty < 4) ty = 4;
+
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top  = ty + 'px';
+});
+
+canvas.parentElement.addEventListener('pointerleave', () => {
+  tooltip.style.display = 'none';
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════════════
+
+function readParams() {
+  const speedBtns = document.querySelectorAll('[data-group="speed"] button');
+  const angleBtns = document.querySelectorAll('[data-group="angle"] button');
+  const speedMode = [...speedBtns].find(b => b.classList.contains('active')).dataset.mode;
+  const angleMode = [...angleBtns].find(b => b.classList.contains('active')).dataset.mode;
+
+  return {
+    speedMode,
+    minSpeed:       parseFloat(document.getElementById('minSpeed').value),
+    maxSpeed:       parseFloat(document.getElementById('maxSpeed').value),
+    fixedSpeed:     parseFloat(document.getElementById('fixedSpeed').value),
+    angleMode,
+    minAngle:       parseFloat(document.getElementById('minAngle').value),
+    maxAngle:       parseFloat(document.getElementById('maxAngle').value),
+    fixedAngle:     parseFloat(document.getElementById('fixedAngle').value),
+    tangentialVelo: parseFloat(document.getElementById('tangentialVelo').value),
+    radialVelo:     parseFloat(document.getElementById('radialVelo').value),
+    gridRes:        parseFloat(document.getElementById('gridRes').value),
+    shooterZ:       parseFloat(document.getElementById('shooterZ').value),
+    ceilingHeight:  parseFloat(document.getElementById('ceilingHeight').value),
+    targetX:        parseFloat(document.getElementById('targetX').value),
+    targetY:        parseFloat(document.getElementById('targetY').value),
+    targetZ:        parseFloat(document.getElementById('targetZ').value),
+  };
+}
+
+function updateValueDisplays() {
+  document.getElementById('minSpeed-val').textContent       = parseFloat(document.getElementById('minSpeed').value).toFixed(1) + ' m/s';
+  document.getElementById('maxSpeed-val').textContent       = parseFloat(document.getElementById('maxSpeed').value).toFixed(1) + ' m/s';
+  document.getElementById('fixedSpeed-val').textContent     = parseFloat(document.getElementById('fixedSpeed').value).toFixed(1) + ' m/s';
+  document.getElementById('minAngle-val').textContent       = parseFloat(document.getElementById('minAngle').value).toFixed(1) + '°';
+  document.getElementById('maxAngle-val').textContent       = parseFloat(document.getElementById('maxAngle').value).toFixed(1) + '°';
+  document.getElementById('fixedAngle-val').textContent     = parseFloat(document.getElementById('fixedAngle').value).toFixed(1) + '°';
+  document.getElementById('tangentialVelo-val').textContent = parseFloat(document.getElementById('tangentialVelo').value).toFixed(1) + ' m/s';
+  document.getElementById('radialVelo-val').textContent     = parseFloat(document.getElementById('radialVelo').value).toFixed(1) + ' m/s';
+  document.getElementById('gridRes-val').textContent        = parseFloat(document.getElementById('gridRes').value).toFixed(2) + ' m';
+  document.getElementById('shooterZ-val').textContent       = parseFloat(document.getElementById('shooterZ').value).toFixed(2) + ' m';
+  document.getElementById('ceilingHeight-val').textContent  = parseFloat(document.getElementById('ceilingHeight').value).toFixed(1) + ' m';
+  document.getElementById('targetX-val').textContent        = parseFloat(document.getElementById('targetX').value).toFixed(2) + ' m';
+  document.getElementById('targetY-val').textContent        = parseFloat(document.getElementById('targetY').value).toFixed(2) + ' m';
+  document.getElementById('targetZ-val').textContent        = parseFloat(document.getElementById('targetZ').value).toFixed(2) + ' m';
+}
+
+function scheduleRecalc() {
+  updateValueDisplays();
+  clearTimeout(recalcTimer);
+  recalcTimer = setTimeout(() => {
+    currentParams = readParams();
+    document.getElementById('status').textContent = 'Computing...';
+
+    requestAnimationFrame(() => {
+      const t0 = performance.now();
+      heatmapData = computeHeatmap(currentParams);
+      const dt = (performance.now() - t0).toFixed(0);
+      const total = heatmapData.cols * heatmapData.rows;
+      document.getElementById('status').textContent =
+        `${heatmapData.validCount} / ${total} valid · ${dt} ms`;
+      render();
+    });
+  }, 80);
+}
+
+// Mode toggle buttons
+document.querySelectorAll('.mode-toggle').forEach(toggle => {
+  const group = toggle.dataset.group;
+  toggle.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (group === 'speed') {
+        document.getElementById('speed-variable').style.display = btn.dataset.mode === 'variable' ? '' : 'none';
+        document.getElementById('speed-fixed').style.display    = btn.dataset.mode === 'fixed' ? '' : 'none';
+      } else {
+        document.getElementById('angle-variable').style.display = btn.dataset.mode === 'variable' ? '' : 'none';
+        document.getElementById('angle-fixed').style.display    = btn.dataset.mode === 'fixed' ? '' : 'none';
+      }
+
+      scheduleRecalc();
+    });
+  });
+});
+
+// All sliders and selects trigger recalc
+document.querySelectorAll('#sidebar input[type="range"], #sidebar select').forEach(el => {
+  el.addEventListener('input', scheduleRecalc);
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+
+function init() {
+  computeLayout();
+  updateValueDisplays();
+  currentParams = readParams();
+  heatmapData = computeHeatmap(currentParams);
+
+  const total = heatmapData.cols * heatmapData.rows;
+  document.getElementById('status').textContent =
+    `${heatmapData.validCount} / ${total} valid`;
+  render();
+}
+
+window.addEventListener('resize', () => {
+  computeLayout();
+  render();
+});
+
+init();
+</script>
+</body>
+</html>
