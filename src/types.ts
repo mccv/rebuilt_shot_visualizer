@@ -36,6 +36,14 @@ export interface Params {
   targetZ: number;
   maxVyAtTarget: number;
   maxLateralDrift: number;
+  dragEnabled: boolean;
+}
+
+/** Drag configuration passed through the physics call chain. */
+export interface DragConfig {
+  enabled: boolean;
+  /** Pre-computed  k = ½ρCdA / m  (1/m).  Only meaningful when enabled. */
+  k: number;
 }
 
 /** Single point on a sampled trajectory. */
@@ -62,7 +70,10 @@ export interface DetailedShot {
   ceilingHeight: number;
   tangentialVelo: number;
   radialVelo: number;
+  dragEnabled: boolean;
   trajectory: TrajectoryPoint[];
+  /** Vacuum (no-drag) trajectory for comparison overlay. Only set when drag is enabled. */
+  vacuumTrajectory?: TrajectoryPoint[];
   vxLaunch: number;
   vzLaunch: number;
   vyLaunch: number;

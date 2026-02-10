@@ -43,6 +43,21 @@ export function renderTopView(canvasEl: HTMLCanvasElement, shot: DetailedShot): 
   c.stroke();
   c.setLineDash([]);
 
+  // Vacuum trajectory overlay (dashed, when drag is active)
+  if (shot.vacuumTrajectory) {
+    c.setLineDash([6, 5]);
+    c.strokeStyle = '#58a6ff44';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    const vt = shot.vacuumTrajectory;
+    c.moveTo(toX(vt[0].x), toY(vt[0].y));
+    for (let i = 1; i < vt.length; i++) {
+      c.lineTo(toX(vt[i].x), toY(vt[i].y));
+    }
+    c.stroke();
+    c.setLineDash([]);
+  }
+
   // Actual trajectory
   c.strokeStyle = '#58a6ff';
   c.lineWidth = 2;

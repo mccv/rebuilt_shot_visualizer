@@ -24,8 +24,10 @@ export function populateShotInfo(shot: DetailedShot): void {
     row('Flight Time', shot.flightTime.toFixed(3) + ' s') +
     row('Apex Height', shot.apexHeight.toFixed(2) + ' m') +
     row('Ceiling', shot.ceilingHeight.toFixed(1) + ' m') +
+    row('Air Drag', shot.dragEnabled ? 'On' : 'Off') +
     section('At Target') +
     row('Vy', shot.vyAtTarget.toFixed(2) + ' m/s') +
+    row('Vx', shot.vxTarget.toFixed(2) + ' m/s') +
     row('Descent Angle', (Math.atan2(-shot.vzTarget, shot.vxTarget) * 180 / Math.PI).toFixed(1) + '\u00B0') +
     section('Robot Velocity') +
     row('Tangential', shot.tangentialVelo.toFixed(1) + ' m/s') +

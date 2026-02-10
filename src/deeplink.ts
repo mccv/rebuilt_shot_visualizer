@@ -5,7 +5,7 @@
 import { getViewMode } from './controls';
 
 /** Map of URL param keys → { element id, type }. Modes handled separately. */
-const PARAM_KEYS: Record<string, { id: string; type: 'range' | 'select' }> = {
+const PARAM_KEYS: Record<string, { id: string; type: 'range' | 'select' | 'checkbox' }> = {
   minSpeed:       { id: 'minSpeed',       type: 'range' },
   maxSpeed:       { id: 'maxSpeed',       type: 'range' },
   fixedSpeed:     { id: 'fixedSpeed',     type: 'range' },
@@ -23,6 +23,7 @@ const PARAM_KEYS: Record<string, { id: string; type: 'range' | 'select' }> = {
   maxVyAtTarget:  { id: 'maxVyAtTarget',  type: 'range' },
   maxLateralDrift: { id: 'maxLateralDrift', type: 'range' },
   colorMode:      { id: 'colorMode',      type: 'select' },
+  dragEnabled:    { id: 'dragEnabled',    type: 'checkbox' },
 };
 
 /** Apply URL search params to the DOM controls. */
@@ -69,6 +70,8 @@ export function applyUrlParams(): void {
         const clamped = Math.max(parseFloat(inp.min), Math.min(parseFloat(inp.max), num));
         inp.value = String(clamped);
       }
+    } else if (type === 'checkbox') {
+      (el as HTMLInputElement).checked = val === '1' || val === 'true';
     } else {
       // select — only set if valid option
       const sel = el as HTMLSelectElement;
@@ -92,9 +95,13 @@ export function pushStateToUrl(): void {
   p.set('angleMode', angleMode || 'variable');
   p.set('viewMode', viewMode);
 
-  // Sliders and selects
-  for (const [key, { id }] of Object.entries(PARAM_KEYS)) {
-    p.set(key, (document.getElementById(id) as HTMLInputElement).value);
+  // Sliders, selects, and checkboxes
+  for (const [key, { id, type }] of Object.entries(PARAM_KEYS)) {
+    if (type === 'checkbox') {
+      p.set(key, (document.getElementById(id) as HTMLInputElement).checked ? '1' : '0');
+    } else {
+      p.set(key, (document.getElementById(id) as HTMLInputElement).value);
+    }
   }
 
   const url = window.location.pathname + '?' + p.toString();

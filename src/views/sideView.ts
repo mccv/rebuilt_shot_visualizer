@@ -54,6 +54,21 @@ export function renderSideView(canvasEl: HTMLCanvasElement, shot: DetailedShot):
     c.fillText('ceiling ' + shot.ceilingHeight.toFixed(1) + 'm', toX(xMax) - 4, toY(shot.ceilingHeight) - 5);
   }
 
+  // Vacuum trajectory overlay (dashed, when drag is active)
+  if (shot.vacuumTrajectory) {
+    c.setLineDash([6, 5]);
+    c.strokeStyle = '#58a6ff44';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    const vt = shot.vacuumTrajectory;
+    c.moveTo(toX(vt[0].x), toY(vt[0].z));
+    for (let i = 1; i < vt.length; i++) {
+      c.lineTo(toX(vt[i].x), toY(vt[i].z));
+    }
+    c.stroke();
+    c.setLineDash([]);
+  }
+
   // Trajectory arc
   c.strokeStyle = '#58a6ff';
   c.lineWidth = 2;
@@ -152,6 +167,35 @@ export function renderSideView(canvasEl: HTMLCanvasElement, shot: DetailedShot):
   // Resolve overlaps and draw
   lp.resolve();
   lp.draw();
+
+  // Drag legend (top-right corner)
+  if (shot.vacuumTrajectory) {
+    const lx = w - pad.right - 6;
+    const ly = pad.top + 14;
+    c.font = '11px sans-serif';
+    c.textAlign = 'right';
+
+    // Solid line sample + label
+    c.strokeStyle = '#58a6ff';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(lx - 70, ly - 4);
+    c.lineTo(lx - 44, ly - 4);
+    c.stroke();
+    c.fillStyle = '#8b949e';
+    c.fillText('drag', lx - 2, ly);
+
+    // Dashed line sample + label
+    c.setLineDash([4, 3]);
+    c.strokeStyle = '#58a6ff44';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(lx - 70, ly + 12);
+    c.lineTo(lx - 44, ly + 12);
+    c.stroke();
+    c.setLineDash([]);
+    c.fillText('vacuum', lx - 2, ly + 16);
+  }
 
   // Axis labels (margin text — no overlap risk)
   c.fillStyle = '#8b949e';

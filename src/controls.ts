@@ -38,6 +38,7 @@ export function readParams(): Params {
     targetZ:        parseFloat((document.getElementById('targetZ') as HTMLInputElement).value),
     maxVyAtTarget:  parseFloat((document.getElementById('maxVyAtTarget') as HTMLInputElement).value),
     maxLateralDrift: parseFloat((document.getElementById('maxLateralDrift') as HTMLInputElement).value),
+    dragEnabled:    (document.getElementById('dragEnabled') as HTMLInputElement).checked,
   };
 }
 
@@ -59,6 +60,8 @@ export function updateValueDisplays(): void {
   document.getElementById('targetZ-val')!.textContent        = val('targetZ').toFixed(2) + ' m';
   document.getElementById('maxVyAtTarget-val')!.textContent  = val('maxVyAtTarget').toFixed(1) + ' m/s';
   document.getElementById('maxLateralDrift-val')!.textContent = val('maxLateralDrift').toFixed(2) + ' m';
+  document.getElementById('dragEnabled-val')!.textContent =
+    (document.getElementById('dragEnabled') as HTMLInputElement).checked ? 'On' : 'Off';
 }
 
 export function scheduleRecalc(): void {
@@ -121,5 +124,10 @@ export function bindControls(): void {
   // All sliders and selects trigger recalc
   document.querySelectorAll('#sidebar input[type="range"], #sidebar select').forEach(el => {
     el.addEventListener('input', scheduleRecalc);
+  });
+
+  // Checkboxes trigger recalc
+  document.querySelectorAll('#sidebar input[type="checkbox"]').forEach(el => {
+    el.addEventListener('change', scheduleRecalc);
   });
 }

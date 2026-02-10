@@ -87,6 +87,21 @@ export function renderBackView(canvasEl: HTMLCanvasElement, shot: DetailedShot):
   lp.add({ text: 'target', x: tgtPx, y: tgtPy + 34,
     font: 'bold 13px sans-serif', color: '#58a6ff' });
 
+  // Vacuum trajectory overlay (dashed, when drag is active)
+  if (shot.vacuumTrajectory) {
+    c.setLineDash([6, 5]);
+    c.strokeStyle = '#58a6ff22';
+    c.lineWidth = 1;
+    c.beginPath();
+    const vt = shot.vacuumTrajectory;
+    c.moveTo(toX(vt[0].y), toY(vt[0].z));
+    for (let i = 1; i < vt.length; i++) {
+      c.lineTo(toX(vt[i].y), toY(vt[i].z));
+    }
+    c.stroke();
+    c.setLineDash([]);
+  }
+
   // Trajectory projection (lateral vs height)
   c.strokeStyle = '#58a6ff44';
   c.lineWidth = 1.5;

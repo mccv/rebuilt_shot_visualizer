@@ -149,7 +149,7 @@ export function computeHeatmap(params: Params): HeatmapData {
  * Compute range chart data: sweep over distance × tangential × radial.
  */
 export function computeRangeChart(params: Params): RangeChartData {
-  const distMin = 0.5, distMax = 10, distStep = 0.25;
+  const distMin = 0.5, distMax = 6, distStep = 0.25;
   const tanMin = 0, tanMax = 5, tanStep = 0.5;
   const radMin = -3, radMax = 3, radStep = 1;
 
@@ -184,6 +184,52 @@ export function computeRangeChart(params: Params): RangeChartData {
         panel[ti][di] = result;
         data.totalCount++;
         if (result) {
+          data.validCount++;
+          data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
+          data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
+          data.minAngle = Math.min(data.minAngle, result.hoodAngleDeg);
+          data.maxAngle = Math.max(data.maxAngle, result.hoodAngleDeg);
+        }
+      }
+
+      // ── Hint recovery along the distance axis ──────────────
+      // Forward pass: use a valid left-neighbor's result as a hint.
+      for (let di = 1; di < distances.length; di++) {
+        if (panel[ti][di] || !panel[ti][di - 1]) continue;
+        const hint = panel[ti][di - 1]!;
+        const modParams = Object.assign({}, params, {
+          tangentialVelo: tangentials[ti], radialVelo: radials[ri],
+        });
+        const fx = params.targetX + distances[di];
+        const fy = params.targetY;
+        const result = evaluateShotWithHint(
+          fx, fy, modParams,
+          hint.shotSpeed, hint.hoodAngleDeg * Math.PI / 180,
+        );
+        if (result) {
+          panel[ti][di] = result;
+          data.validCount++;
+          data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
+          data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
+          data.minAngle = Math.min(data.minAngle, result.hoodAngleDeg);
+          data.maxAngle = Math.max(data.maxAngle, result.hoodAngleDeg);
+        }
+      }
+      // Backward pass: use a valid right-neighbor's result as a hint.
+      for (let di = distances.length - 2; di >= 0; di--) {
+        if (panel[ti][di] || !panel[ti][di + 1]) continue;
+        const hint = panel[ti][di + 1]!;
+        const modParams = Object.assign({}, params, {
+          tangentialVelo: tangentials[ti], radialVelo: radials[ri],
+        });
+        const fx = params.targetX + distances[di];
+        const fy = params.targetY;
+        const result = evaluateShotWithHint(
+          fx, fy, modParams,
+          hint.shotSpeed, hint.hoodAngleDeg * Math.PI / 180,
+        );
+        if (result) {
+          panel[ti][di] = result;
           data.validCount++;
           data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
           data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
