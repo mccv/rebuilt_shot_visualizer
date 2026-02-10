@@ -32,6 +32,17 @@ export function angleColor(t: number, alpha: number): string {
 }
 
 /**
+ * Fixed-scale color ramp for descent angle at target.
+ * ≤15° (flat) → red, ≥60° (steep) → green.
+ * Takes the raw descent angle in degrees, not a normalized t.
+ */
+export function descentColor(descentAngleDeg: number, alpha: number): string {
+  const t = Math.max(0, Math.min(1, (descentAngleDeg - 15) / (60 - 15)));
+  const h = t * 120; // 0=red → 120=green
+  return `hsla(${h}, 85%, 50%, ${alpha})`;
+}
+
+/**
  * Draw an arrow from (x1,y1) to (x2,y2) with optional label.
  * If labelPlacer is provided, the label is deferred for collision resolution.
  */

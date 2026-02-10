@@ -5,7 +5,7 @@
 import './style.css';
 
 import { state } from './state';
-import { computeHeatmap, refineBoundary, computeRangeChart } from './compute';
+import { computeHeatmap, computeRangeChart } from './compute';
 import { bindCanvas, computeLayout, render } from './render';
 import { readParams, updateValueDisplays, getViewMode, bindControls } from './controls';
 import { bindTooltip } from './tooltip';
@@ -35,14 +35,9 @@ function init(): void {
       `${state.rangeChartData.validCount} / ${state.rangeChartData.totalCount} valid`;
   } else {
     state.heatmapData = computeHeatmap(params);
-    refineBoundary(state.heatmapData, params);
-
     const total = state.heatmapData.cols * state.heatmapData.rows;
-    const rvc = state.heatmapData.refinedValidCount || 0;
-    const bc = state.heatmapData.boundaryCellCount || 0;
-    let statusText = `${state.heatmapData.validCount} / ${total} valid`;
-    if (bc > 0) statusText += ` \u00B7 ${bc} edges refined (+${rvc})`;
-    document.getElementById('status')!.textContent = statusText;
+    document.getElementById('status')!.textContent =
+      `${state.heatmapData.validCount} / ${total} valid`;
   }
 
   render();

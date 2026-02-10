@@ -161,16 +161,6 @@ export function bindModal(mainCanvas: HTMLCanvasElement): void {
         const row = Math.floor(fy / hd.res);
         if (row >= 0 && row < hd.rows && col >= 0 && col < hd.cols) {
           result = hd.results[row][col];
-          if (!result && hd.refined) {
-            const subResults = hd.refined.get(`${row},${col}`);
-            if (subResults) {
-              const subCol = Math.min(hd.subDiv! - 1,
-                Math.max(0, Math.floor((fx - col * hd.res) / hd.subRes!)));
-              const subRow = Math.min(hd.subDiv! - 1,
-                Math.max(0, Math.floor((fy - row * hd.res) / hd.subRes!)));
-              result = subResults[subRow][subCol];
-            }
-          }
         }
       }
     }

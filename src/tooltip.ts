@@ -57,6 +57,7 @@ export function bindTooltip(canvas: HTMLCanvasElement): void {
         html += `<div class="tt-row">Flight Time: ${result.flightTime.toFixed(3)} s</div>`;
         html += `<div class="tt-row">Apex: ${result.apexHeight.toFixed(2)} m</div>`;
         html += `<div class="tt-row">Vy at target: ${result.vyAtTarget.toFixed(2)} m/s \u2193</div>`;
+        html += `<div class="tt-row">Descent Angle: ${result.descentAngleDeg.toFixed(1)}\u00B0</div>`;
       } else {
         html += `<div class="tt-invalid">\u2717 No Valid Shot</div>`;
       }
@@ -81,18 +82,6 @@ export function bindTooltip(canvas: HTMLCanvasElement): void {
           cellFx = (col + 0.5) * hd.res;
           cellFy = (row + 0.5) * hd.res;
 
-          if (!result && hd.refined) {
-            const subResults = hd.refined.get(`${row},${col}`);
-            if (subResults) {
-              const subCol = Math.min(hd.subDiv! - 1,
-                Math.max(0, Math.floor((fx - col * hd.res) / hd.subRes!)));
-              const subRow = Math.min(hd.subDiv! - 1,
-                Math.max(0, Math.floor((fy - row * hd.res) / hd.subRes!)));
-              result = subResults[subRow][subCol];
-              cellFx = col * hd.res + (subCol + 0.5) * hd.subRes!;
-              cellFy = row * hd.res + (subRow + 0.5) * hd.subRes!;
-            }
-          }
         }
       }
 
@@ -105,6 +94,7 @@ export function bindTooltip(canvas: HTMLCanvasElement): void {
         html += `<div class="tt-row">Range: ${result.range.toFixed(2)} m</div>`;
         html += `<div class="tt-row">Apex: ${result.apexHeight.toFixed(2)} m</div>`;
         html += `<div class="tt-row">Vy at target: ${result.vyAtTarget.toFixed(2)} m/s \u2193</div>`;
+        html += `<div class="tt-row">Descent Angle: ${result.descentAngleDeg.toFixed(1)}\u00B0</div>`;
       } else {
         html += `<div class="tt-invalid">\u2717 No Valid Shot</div>`;
       }

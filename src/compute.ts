@@ -1,12 +1,32 @@
 // ═══════════════════════════════════════════════════════════════
-//  Computation — heatmap, boundary refinement, range chart
+//  Computation — heatmap + range chart
 // ═══════════════════════════════════════════════════════════════
 
 import { FIELD_WIDTH, FIELD_LENGTH, DISPLAY_BUFFER } from './constants';
-import { evaluateShot, evaluateShotAtRange } from './physics';
-import type { Params, HeatmapData, RangeChartData } from './types';
+import { evaluateShot, evaluateShotWithHint, evaluateShotAtRange } from './physics';
+import type { Params, ShotResult, HeatmapData, RangeChartData } from './types';
 
-/** Compute field-view heatmap: sweep over (x, y) grid positions. */
+// Sentinel value distinguishing "not yet computed" from "computed as null".
+const UNCOMPUTED = undefined as unknown as (ShotResult | null);
+
+/** Track a valid result in the running min/max stats. */
+function accumStats(data: HeatmapData, result: ShotResult): void {
+  data.validCount++;
+  data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
+  data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
+  data.minAngle = Math.min(data.minAngle, result.hoodAngleDeg);
+  data.maxAngle = Math.max(data.maxAngle, result.hoodAngleDeg);
+}
+
+/**
+ * Compute field-view heatmap using seed-and-propagate.
+ *
+ *   Phase 1 — Seed grid: full sweep on a sparse sub-grid.
+ *   Phase 2 — BFS propagation: Newton-only from valid seeds.
+ *   Phase 3 — Stragglers: full sweep for unreached cells.
+ *   Phase 4 — Neighbor recovery: one more hint pass for null cells
+ *             adjacent to valid ones (fixes sweep mis-seeds).
+ */
 export function computeHeatmap(params: Params): HeatmapData {
   const res = params.gridRes;
   const displayLength = Math.min(FIELD_LENGTH, params.targetX + DISPLAY_BUFFER);
@@ -20,88 +40,109 @@ export function computeHeatmap(params: Params): HeatmapData {
     validCount: 0,
   };
 
+  // Allocate grid — UNCOMPUTED means "not yet evaluated".
+  // After evaluation a cell is either a ShotResult or null.
   for (let r = 0; r < rows; r++) {
-    data.results[r] = [];
-    for (let c = 0; c < cols; c++) {
+    data.results[r] = new Array(cols).fill(UNCOMPUTED);
+  }
+
+  // Seed spacing: keep seeds ≤ ~0.75 m apart regardless of grid resolution.
+  const seedSpacing = Math.min(4, Math.max(1, Math.floor(0.75 / res)));
+
+  // ── Phase 1: Seed grid (full sweep) ──────────────────────────
+  const bfsQueue: [number, number][] = [];
+
+  for (let r = 0; r < rows; r += seedSpacing) {
+    for (let c = 0; c < cols; c += seedSpacing) {
       const fx = (c + 0.5) * res;
       const fy = (r + 0.5) * res;
       const result = evaluateShot(fx, fy, params);
       data.results[r][c] = result;
-
       if (result) {
-        data.validCount++;
-        data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
-        data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
-        data.minAngle = Math.min(data.minAngle, result.hoodAngleDeg);
-        data.maxAngle = Math.max(data.maxAngle, result.hoodAngleDeg);
+        accumStats(data, result);
+        bfsQueue.push([r, c]);
+      }
+    }
+  }
+
+  // ── Phase 2: BFS propagation (Newton with hint) ──────────────
+  const DR = [-1, 1, 0, 0];
+  const DC = [0, 0, -1, 1];
+  let head = 0;
+
+  while (head < bfsQueue.length) {
+    const [pr, pc] = bfsQueue[head++];
+    const parent = data.results[pr][pc]!; // always valid — only valid cells are enqueued
+
+    for (let d = 0; d < 4; d++) {
+      const nr = pr + DR[d];
+      const nc = pc + DC[d];
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      if (data.results[nr][nc] !== UNCOMPUTED) continue; // already computed
+
+      const fx = (nc + 0.5) * res;
+      const fy = (nr + 0.5) * res;
+      const result = evaluateShotWithHint(
+        fx, fy, params,
+        parent.shotSpeed, parent.hoodAngleDeg * Math.PI / 180,
+      );
+      data.results[nr][nc] = result;
+      if (result) {
+        accumStats(data, result);
+        bfsQueue.push([nr, nc]);
+      }
+    }
+  }
+
+  // ── Phase 3: Sweep stragglers (cells BFS couldn't reach) ─────
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (data.results[r][c] !== UNCOMPUTED) continue;
+      const fx = (c + 0.5) * res;
+      const fy = (r + 0.5) * res;
+      const result = evaluateShot(fx, fy, params);
+      data.results[r][c] = result;
+      if (result) {
+        accumStats(data, result);
+      }
+    }
+  }
+
+  // ── Phase 4: Neighbor recovery ───────────────────────────────
+  // Any null cell next to a valid one gets one more try using the
+  // neighbor's (speed, angle) as a hint.  This recovers cells where
+  // the full sweep picked the wrong speed but a neighbor found one
+  // that works at a similar range.
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (data.results[r][c] !== null) continue; // skip valid & uncomputed
+
+      // Find a valid 4-connected neighbor to borrow a hint from.
+      let hint: ShotResult | null = null;
+      for (let d = 0; d < 4; d++) {
+        const nr = r + DR[d];
+        const nc = c + DC[d];
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && data.results[nr][nc]) {
+          hint = data.results[nr][nc];
+          break;
+        }
+      }
+      if (!hint) continue;
+
+      const fx = (c + 0.5) * res;
+      const fy = (r + 0.5) * res;
+      const result = evaluateShotWithHint(
+        fx, fy, params,
+        hint.shotSpeed, hint.hoodAngleDeg * Math.PI / 180,
+      );
+      if (result) {
+        data.results[r][c] = result;
+        accumStats(data, result);
       }
     }
   }
 
   return data;
-}
-
-/**
- * After the coarse grid pass, find every null cell with at least one
- * valid 8-connected neighbor and re-evaluate it on a finer sub-grid.
- */
-export function refineBoundary(data: HeatmapData, params: Params): void {
-  const { cols, rows, res, results } = data;
-  const subDiv = 4;
-  const subRes = res / subDiv;
-  const refined = new Map<string, (import('./types').ShotResult | null)[][]>();
-  let refinedValidCount = 0;
-  let boundaryCellCount = 0;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (results[r][c] !== null) continue;
-
-      // Check 8-connected neighbors for any valid cell
-      let hasValidNeighbor = false;
-      for (let dr = -1; dr <= 1 && !hasValidNeighbor; dr++) {
-        for (let dc = -1; dc <= 1 && !hasValidNeighbor; dc++) {
-          if (dr === 0 && dc === 0) continue;
-          const nr = r + dr, nc = c + dc;
-          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && results[nr][nc]) {
-            hasValidNeighbor = true;
-          }
-        }
-      }
-      if (!hasValidNeighbor) continue;
-
-      boundaryCellCount++;
-      const baseX = c * res;
-      const baseY = r * res;
-      const subResults: (import('./types').ShotResult | null)[][] = [];
-
-      for (let sr = 0; sr < subDiv; sr++) {
-        subResults[sr] = [];
-        for (let sc = 0; sc < subDiv; sc++) {
-          const fx = baseX + (sc + 0.5) * subRes;
-          const fy = baseY + (sr + 0.5) * subRes;
-          const result = evaluateShot(fx, fy, params);
-          subResults[sr][sc] = result;
-
-          if (result) {
-            refinedValidCount++;
-            data.minSpeed = Math.min(data.minSpeed, result.shotSpeed);
-            data.maxSpeed = Math.max(data.maxSpeed, result.shotSpeed);
-            data.minAngle = Math.min(data.minAngle, result.hoodAngleDeg);
-            data.maxAngle = Math.max(data.maxAngle, result.hoodAngleDeg);
-          }
-        }
-      }
-
-      refined.set(`${r},${c}`, subResults);
-    }
-  }
-
-  data.refined = refined;
-  data.subDiv = subDiv;
-  data.subRes = subRes;
-  data.refinedValidCount = refinedValidCount;
-  data.boundaryCellCount = boundaryCellCount;
 }
 
 /**

@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { FIELD_LENGTH, FIELD_WIDTH, DISPLAY_BUFFER } from './constants';
-import { speedColor, angleColor } from './drawing';
+import { speedColor, angleColor, descentColor } from './drawing';
 import { state } from './state';
 import type { LayoutCache, RangeChartLayout, PanelPosition } from './types';
 
@@ -100,14 +100,16 @@ export function renderFieldMap(): void {
         const fy = (r + 0.5) * res;
         const [px, py] = fieldToCanvas(fx, fy);
 
-        let t: number, color: string;
-        if (colorMode === 'speed') {
+        let color: string;
+        if (colorMode === 'descent') {
+          color = descentColor(result.descentAngleDeg, 0.8);
+        } else if (colorMode === 'speed') {
           const range = maxSpeed - minSpeed;
-          t = range > 0.01 ? (result.shotSpeed - minSpeed) / range : 0.5;
+          const t = range > 0.01 ? (result.shotSpeed - minSpeed) / range : 0.5;
           color = speedColor(t, 0.8);
         } else {
           const range = maxAngle - minAngle;
-          t = range > 0.01 ? (result.hoodAngleDeg - minAngle) / range : 0.5;
+          const t = range > 0.01 ? (result.hoodAngleDeg - minAngle) / range : 0.5;
           color = angleColor(t, 0.8);
         }
 
@@ -116,44 +118,6 @@ export function renderFieldMap(): void {
       }
     }
 
-    // ── Refined boundary sub-cells ──
-    if (hd.refined && hd.refined.size > 0) {
-      const { subDiv, subRes, refined } = hd;
-      const subCellW = subRes! * scale;
-      const subCellH = subRes! * scale;
-
-      for (const [key, subResults] of refined!) {
-        const [rStr, cStr] = key.split(',');
-        const pr = parseInt(rStr), pc = parseInt(cStr);
-        const baseX = pc * res;
-        const baseY = pr * res;
-
-        for (let sr = 0; sr < subDiv!; sr++) {
-          for (let sc = 0; sc < subDiv!; sc++) {
-            const subResult = subResults[sr][sc];
-            if (!subResult) continue;
-
-            const fx = baseX + (sc + 0.5) * subRes!;
-            const fy = baseY + (sr + 0.5) * subRes!;
-            const [px, py] = fieldToCanvas(fx, fy);
-
-            let t: number, color: string;
-            if (colorMode === 'speed') {
-              const range = maxSpeed - minSpeed;
-              t = range > 0.01 ? (subResult.shotSpeed - minSpeed) / range : 0.5;
-              color = speedColor(t, 0.8);
-            } else {
-              const range = maxAngle - minAngle;
-              t = range > 0.01 ? (subResult.hoodAngleDeg - minAngle) / range : 0.5;
-              color = angleColor(t, 0.8);
-            }
-
-            ctx.fillStyle = color;
-            ctx.fillRect(px - subCellW / 2, py - subCellH / 2, subCellW, subCellH);
-          }
-        }
-      }
-    }
   }
 
   // ── Grid lines every 1m ──
@@ -246,11 +210,20 @@ export function renderFieldMap(): void {
     const lw = 18;
     const lh = fh;
 
-    const colorFn = colorMode === 'speed' ? speedColor : angleColor;
-    for (let i = 0; i < lh; i++) {
-      const t = 1 - i / lh;
-      ctx.fillStyle = colorFn(t, 0.9);
-      ctx.fillRect(lx, ly + i, lw, 1);
+    if (colorMode === 'descent') {
+      // Fixed-scale legend: 60° (top/green) → 15° (bottom/red)
+      for (let i = 0; i < lh; i++) {
+        const deg = 60 - (i / lh) * (60 - 15); // top=60°, bottom=15°
+        ctx.fillStyle = descentColor(deg, 0.9);
+        ctx.fillRect(lx, ly + i, lw, 1);
+      }
+    } else {
+      const colorFn = colorMode === 'speed' ? speedColor : angleColor;
+      for (let i = 0; i < lh; i++) {
+        const t = 1 - i / lh;
+        ctx.fillStyle = colorFn(t, 0.9);
+        ctx.fillRect(lx, ly + i, lw, 1);
+      }
     }
 
     ctx.strokeStyle = '#30363d';
@@ -261,7 +234,11 @@ export function renderFieldMap(): void {
     ctx.font = '13px sans-serif';
     ctx.textAlign = 'left';
 
-    if (colorMode === 'speed') {
+    if (colorMode === 'descent') {
+      ctx.fillText('60\u00B0+', lx + lw + 6, ly + 12);
+      ctx.fillText('15\u00B0\u2212', lx + lw + 6, ly + lh);
+      ctx.fillText('Descent', lx - 2, ly - 6);
+    } else if (colorMode === 'speed') {
       ctx.fillText(hd.maxSpeed.toFixed(1) + ' m/s', lx + lw + 6, ly + 12);
       ctx.fillText(hd.minSpeed.toFixed(1) + ' m/s', lx + lw + 6, ly + lh);
       ctx.fillText('Speed', lx - 2, ly - 6);
@@ -337,14 +314,16 @@ export function renderRangeChart(): void {
         const result = panel[ti][di];
         if (!result) continue;
 
-        let t: number, color: string;
-        if (colorMode === 'speed') {
+        let color: string;
+        if (colorMode === 'descent') {
+          color = descentColor(result.descentAngleDeg, 0.85);
+        } else if (colorMode === 'speed') {
           const range = rcd.maxSpeed - rcd.minSpeed;
-          t = range > 0.01 ? (result.shotSpeed - rcd.minSpeed) / range : 0.5;
+          const t = range > 0.01 ? (result.shotSpeed - rcd.minSpeed) / range : 0.5;
           color = speedColor(t, 0.85);
         } else {
           const range = rcd.maxAngle - rcd.minAngle;
-          t = range > 0.01 ? (result.hoodAngleDeg - rcd.minAngle) / range : 0.5;
+          const t = range > 0.01 ? (result.hoodAngleDeg - rcd.minAngle) / range : 0.5;
           color = angleColor(t, 0.85);
         }
 
@@ -414,11 +393,19 @@ export function renderRangeChart(): void {
   const legendH = bottomY - legendTop;
 
   if (rcd.validCount > 0 && legendH > 10) {
-    const colorFn = colorMode === 'speed' ? speedColor : angleColor;
-    for (let i = 0; i < legendH; i++) {
-      const t = 1 - i / legendH;
-      ctx.fillStyle = colorFn(t, 0.9);
-      ctx.fillRect(legendX, legendTop + i, legendW, 1);
+    if (colorMode === 'descent') {
+      for (let i = 0; i < legendH; i++) {
+        const deg = 60 - (i / legendH) * (60 - 15);
+        ctx.fillStyle = descentColor(deg, 0.9);
+        ctx.fillRect(legendX, legendTop + i, legendW, 1);
+      }
+    } else {
+      const colorFn = colorMode === 'speed' ? speedColor : angleColor;
+      for (let i = 0; i < legendH; i++) {
+        const t = 1 - i / legendH;
+        ctx.fillStyle = colorFn(t, 0.9);
+        ctx.fillRect(legendX, legendTop + i, legendW, 1);
+      }
     }
 
     ctx.strokeStyle = '#30363d';
@@ -429,7 +416,11 @@ export function renderRangeChart(): void {
     ctx.font = '13px sans-serif';
     ctx.textAlign = 'left';
 
-    if (colorMode === 'speed') {
+    if (colorMode === 'descent') {
+      ctx.fillText('60\u00B0+', legendX + legendW + 6, legendTop + 12);
+      ctx.fillText('15\u00B0\u2212', legendX + legendW + 6, legendTop + legendH);
+      ctx.fillText('Descent', legendX - 2, legendTop - 6);
+    } else if (colorMode === 'speed') {
       ctx.fillText(rcd.maxSpeed.toFixed(1) + ' m/s', legendX + legendW + 6, legendTop + 12);
       ctx.fillText(rcd.minSpeed.toFixed(1) + ' m/s', legendX + legendW + 6, legendTop + legendH);
       ctx.fillText('Speed', legendX - 2, legendTop - 6);

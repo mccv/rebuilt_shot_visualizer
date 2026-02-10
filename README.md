@@ -8,12 +8,15 @@ computes and displays which field positions can produce a valid shot into the ta
 
 ## Features
 
-- **2D field heatmap** showing valid/invalid shooting zones
+- **Field map heatmap** showing valid/invalid shooting zones across the 2D field
+- **Range chart** — multi-panel view sweeping distance × tangential velocity × radial velocity
 - **Fixed or variable** shot speed and hood angle modes
 - **Robot velocity** sliders (tangential and radial) to see how motion affects the shooting envelope
-- **Hover tooltip** with per-position shot details (speed, angle, flight time, apex height)
-- **Color modes** for shot speed or hood angle visualization
+- **Hover tooltip** with per-position shot details (speed, angle, flight time, apex, descent angle)
+- **Shot detail modal** — click any valid cell for side/top/back trajectory views and full shot parameters
+- **Color modes**: descent angle (default, fixed 15°–60° scale), shot speed, or hood angle
 - **Adjustable target**, shooter height, ceiling height, and grid resolution
+- **Shareable deep links** — all control state is encoded in the URL
 
 ## Physics
 
@@ -21,18 +24,25 @@ The shot calculator is a direct JavaScript port of the Java `ShotCalculator` use
 robot. It uses a 2D sweep over (speed, angle) candidates followed by Newton's method
 refinement to find descending trajectories that clear the ceiling and hit the target height.
 
-## Deployment
-
-This is a single `index.html` file with zero dependencies. To deploy with GitHub Pages:
-
-1. Push this repo to GitHub
-2. Go to **Settings > Pages**
-3. Under **Source**, select **Deploy from a branch**
-4. Choose the **main** branch and **/ (root)** folder
-5. Save — the site will be live at `https://<org>.github.io/rebuilt_shot_visualizer/`
-
-Or just open `index.html` locally in any browser.
-
 ## Development
 
-No build step required. Edit `index.html` and refresh.
+Requires Node.js. Built with [Vite](https://vitejs.dev/) and TypeScript.
+
+```bash
+npm install
+npm run dev
+```
+
+This starts a dev server (default `http://localhost:5173`) with hot module replacement — edits to any `.ts` file are reflected instantly.
+
+### Build
+
+```bash
+npm run build
+```
+
+Outputs a production bundle to `dist/`.
+
+## Deployment
+
+Deployed via GitHub Pages using the GitHub Actions workflow in `.github/workflows/deploy.yml`, which runs the Vite build and publishes the `dist/` output.

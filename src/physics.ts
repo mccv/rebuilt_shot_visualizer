@@ -7,7 +7,8 @@ import type { ShotResult, SweepResult, RefineResult, Params } from './types';
 
 /**
  * 2D sweep over (speed, angle) to find the best starting point for Newton.
- * Prefers descending trajectories under the ceiling with smallest height error.
+ * Prefers descending trajectories under the ceiling, biased toward the
+ * high-arc (steepest descent) solution when both arcs are available.
  */
 export function sweepSpeedAndAngle(
   minSpeed: number, maxSpeed: number, speedSteps: number,
@@ -21,11 +22,19 @@ export function sweepSpeedAndAngle(
   let bestSpeed = (minSpeed + maxSpeed) / 2;
   let bestAngle = (minAngle + maxAngle) / 2;
   let bestError = Infinity;
+  let bestVy = 0;
   let foundDescending = false;
   const minDescentRate = -0.5;
 
+  // Sweep error threshold: seeds within this tolerance are considered viable
+  // for Newton convergence.  Among viable seeds we prefer steeper descent
+  // (high arc); among non-viable ones we prefer lower error.  0.5 m is
+  // tight enough that Newton reliably converges, while still accepting
+  // imperfect grid points.
+  const sweepErrorThreshold = 0.5;
+
   const speedStep = speedSteps > 1 ? (maxSpeed - minSpeed) / (speedSteps - 1) : 0;
-  const angleStep = 0.02; // ~1.1°
+  const angleStep = 0.01; // ~0.55°
 
   for (let si = 0; si < speedSteps; si++) {
     const v = minSpeed + si * speedStep;
@@ -52,10 +61,21 @@ export function sweepSpeedAndAngle(
       const desc = vyTarget < minDescentRate;
 
       if (desc) {
-        if (!foundDescending || err < bestError) {
+        // Classify candidates as "viable" (close enough for Newton to converge)
+        // vs "marginal" (too far off to be a reliable seed).
+        const newViable  = err       < sweepErrorThreshold;
+        const bestViable = bestError < sweepErrorThreshold;
+
+        const shouldReplace = !foundDescending               // first descending — always accept
+          || (newViable && !bestViable)                       // viable beats marginal
+          || (newViable && bestViable && vyTarget < bestVy)   // both viable — prefer steeper descent (high arc)
+          || (!newViable && !bestViable && err < bestError);  // both marginal — prefer lower error
+
+        if (shouldReplace) {
           bestError = err;
           bestSpeed = v;
           bestAngle = angle;
+          bestVy = vyTarget;
           foundDescending = true;
         }
       } else if (!foundDescending && err < bestError) {
@@ -138,51 +158,13 @@ export function refineAngle(
 }
 
 /**
- * Evaluate whether a shot from field position (fx, fy) can reach the target.
- * Returns shot details, or null if invalid.
+ * Validate a (speed, angle) candidate and build a ShotResult.
+ * Checks height error, ceiling, and descent constraints.
+ * Returns null if any check fails.
  */
-export function evaluateShot(fx: number, fy: number, p: Params): ShotResult | null {
-  const dx = p.targetX - fx;
-  const dy = p.targetY - fy;
-  const range = Math.sqrt(dx * dx + dy * dy);
-  const heightDiff = p.targetZ - p.shooterZ;
-
-  if (range < 0.3) return null; // too close to target
-
-  // Determine sweep parameters from mode
-  const sMin  = p.speedMode === 'fixed' ? p.fixedSpeed : p.minSpeed;
-  const sMax  = p.speedMode === 'fixed' ? p.fixedSpeed : p.maxSpeed;
-  const sSteps = p.speedMode === 'fixed' ? 1 : 30;
-
-  const aMin = p.angleMode === 'fixed' ? p.fixedAngle : p.minAngle;
-  const aMax = p.angleMode === 'fixed' ? p.fixedAngle : p.maxAngle;
-
-  // Use finer speed sweep when angle is fixed (more resolution needed)
-  const actualSpeedSteps = (p.angleMode === 'fixed' && p.speedMode !== 'fixed') ? 30 : sSteps;
-
-  // Sweep
-  const sweep = sweepSpeedAndAngle(
-    sMin, sMax, actualSpeedSteps,
-    aMin, aMax,
-    p.tangentialVelo, p.radialVelo,
-    range, heightDiff, p.shooterZ, p.ceilingHeight,
-  );
-
-  let speed = sweep.speed;
-  let angle = sweep.angle;
-
-  // Newton refinement (only when angle is variable)
-  if (p.angleMode !== 'fixed') {
-    const ref = refineAngle(
-      speed, angle,
-      p.tangentialVelo, p.radialVelo,
-      range, heightDiff,
-      aMin, aMax,
-    );
-    angle = ref.angle;
-  }
-
-  // Final validation
+function validateAndBuildResult(
+  speed: number, angle: number, range: number, heightDiff: number, p: Params,
+): ShotResult | null {
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
   const hSpeed = speed * cosA;
@@ -207,15 +189,124 @@ export function evaluateShot(fx: number, fy: number, p: Params): ShotResult | nu
   // Must be descending at least as fast as the threshold (maxVyAtTarget is negative)
   if (vyAtTarget > p.maxVyAtTarget) return null;
 
+  // Descent angle: angle below horizontal at target (positive = descending)
+  const descentAngleDeg = Math.atan2(-vyAtTarget, effRadSpeed) * 180 / Math.PI;
+
   return {
     shotSpeed: speed,
     hoodAngleDeg: angle * 180 / Math.PI,
     flightTime: t,
     vyAtTarget,
+    descentAngleDeg,
     apexHeight,
     heightError,
     range,
   };
+}
+
+/**
+ * Try Newton refinement at a given speed and validate the result.
+ * Returns ShotResult or null.  Used by both evaluateShot and evaluateShotWithHint.
+ */
+function trySpeedWithNewton(
+  speed: number, seedAngle: number, range: number, heightDiff: number, p: Params,
+): ShotResult | null {
+  const aMin = p.angleMode === 'fixed' ? p.fixedAngle : p.minAngle;
+  const aMax = p.angleMode === 'fixed' ? p.fixedAngle : p.maxAngle;
+
+  let angle = seedAngle;
+  if (p.angleMode !== 'fixed') {
+    const ref = refineAngle(
+      speed, angle,
+      p.tangentialVelo, p.radialVelo,
+      range, heightDiff,
+      aMin, aMax,
+    );
+    angle = ref.angle;
+  }
+
+  return validateAndBuildResult(speed, angle, range, heightDiff, p);
+}
+
+/**
+ * Evaluate whether a shot from field position (fx, fy) can reach the target.
+ * Runs a full (speed, angle) sweep followed by Newton refinement.
+ * Returns shot details, or null if invalid.
+ */
+export function evaluateShot(fx: number, fy: number, p: Params): ShotResult | null {
+  const dx = p.targetX - fx;
+  const dy = p.targetY - fy;
+  const range = Math.sqrt(dx * dx + dy * dy);
+  const heightDiff = p.targetZ - p.shooterZ;
+
+  if (range < 0.3) return null; // too close to target
+
+  // Determine sweep parameters from mode
+  const sMin  = p.speedMode === 'fixed' ? p.fixedSpeed : p.minSpeed;
+  const sMax  = p.speedMode === 'fixed' ? p.fixedSpeed : p.maxSpeed;
+
+  const aMin = p.angleMode === 'fixed' ? p.fixedAngle : p.minAngle;
+  const aMax = p.angleMode === 'fixed' ? p.fixedAngle : p.maxAngle;
+
+  // Use a fixed speed step size so widening the speed range adds samples
+  // instead of diluting them.  Speed is never Newton-refined, so sweep
+  // resolution directly determines accuracy.
+  // Finer step when angle is fixed (speed is the only degree of freedom).
+  const speedStepSize = (p.angleMode === 'fixed' && p.speedMode !== 'fixed') ? 0.05 : 0.1;
+  const actualSpeedSteps = p.speedMode === 'fixed'
+    ? 1
+    : Math.max(2, Math.round((sMax - sMin) / speedStepSize) + 1);
+
+  // Sweep
+  const sweep = sweepSpeedAndAngle(
+    sMin, sMax, actualSpeedSteps,
+    aMin, aMax,
+    p.tangentialVelo, p.radialVelo,
+    range, heightDiff, p.shooterZ, p.ceilingHeight,
+  );
+
+  return trySpeedWithNewton(sweep.speed, sweep.angle, range, heightDiff, p);
+}
+
+/**
+ * Evaluate a shot using a neighbor's (speed, angle) as a starting hint.
+ * Tries the hint speed first, then nearby speeds.  Does NOT fall back to a
+ * full sweep — the caller handles escalation.
+ */
+export function evaluateShotWithHint(
+  fx: number, fy: number, p: Params,
+  hintSpeed: number, hintAngleRad: number,
+): ShotResult | null {
+  const dx = p.targetX - fx;
+  const dy = p.targetY - fy;
+  const range = Math.sqrt(dx * dx + dy * dy);
+  const heightDiff = p.targetZ - p.shooterZ;
+
+  if (range < 0.3) return null;
+
+  const sMin = p.speedMode === 'fixed' ? p.fixedSpeed : p.minSpeed;
+  const sMax = p.speedMode === 'fixed' ? p.fixedSpeed : p.maxSpeed;
+
+  // Try the hint speed directly — this is the fast path and works for the
+  // vast majority of cells that are adjacent to a valid neighbor.
+  const direct = trySpeedWithNewton(hintSpeed, hintAngleRad, range, heightDiff, p);
+  if (direct) return direct;
+
+  // Try nearby speeds in expanding rings around the hint.
+  for (let delta = 0.2; delta <= 0.8; delta += 0.2) {
+    const lo = hintSpeed - delta;
+    const hi = hintSpeed + delta;
+    if (lo >= sMin) {
+      const r = trySpeedWithNewton(lo, hintAngleRad, range, heightDiff, p);
+      if (r) return r;
+    }
+    if (hi <= sMax) {
+      const r = trySpeedWithNewton(hi, hintAngleRad, range, heightDiff, p);
+      if (r) return r;
+    }
+  }
+
+  return null;
 }
 
 /**

@@ -8,6 +8,7 @@ export interface ShotResult {
   hoodAngleDeg: number;
   flightTime: number;
   vyAtTarget: number;
+  descentAngleDeg: number;
   apexHeight: number;
   heightError: number;
   range: number;
@@ -72,7 +73,7 @@ export interface DetailedShot {
   vyAtTarget: number;
 }
 
-/** Heatmap data produced by computeHeatmap + refineBoundary. */
+/** Heatmap data produced by computeHeatmap. */
 export interface HeatmapData {
   cols: number;
   rows: number;
@@ -83,11 +84,6 @@ export interface HeatmapData {
   minAngle: number;
   maxAngle: number;
   validCount: number;
-  refined?: Map<string, (ShotResult | null)[][]>;
-  subDiv?: number;
-  subRes?: number;
-  refinedValidCount?: number;
-  boundaryCellCount?: number;
 }
 
 /** Range chart data produced by computeRangeChart. */

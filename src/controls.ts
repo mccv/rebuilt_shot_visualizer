@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { state } from './state';
-import { computeHeatmap, refineBoundary, computeRangeChart } from './compute';
+import { computeHeatmap, computeRangeChart } from './compute';
 import { computeLayout, render } from './render';
 import { pushStateToUrl } from './deeplink';
 import type { Params } from './types';
@@ -79,15 +79,10 @@ export function scheduleRecalc(): void {
           `${state.rangeChartData.validCount} / ${state.rangeChartData.totalCount} valid \u00B7 ${dt} ms`;
       } else {
         state.heatmapData = computeHeatmap(params);
-        refineBoundary(state.heatmapData, params);
         const dt = (performance.now() - t0).toFixed(0);
         const total = state.heatmapData.cols * state.heatmapData.rows;
-        const rvc = state.heatmapData.refinedValidCount || 0;
-        const bc = state.heatmapData.boundaryCellCount || 0;
-        let statusText = `${state.heatmapData.validCount} / ${total} valid`;
-        if (bc > 0) statusText += ` \u00B7 ${bc} edges refined (+${rvc})`;
-        statusText += ` \u00B7 ${dt} ms`;
-        document.getElementById('status')!.textContent = statusText;
+        document.getElementById('status')!.textContent =
+          `${state.heatmapData.validCount} / ${total} valid \u00B7 ${dt} ms`;
       }
 
       render();
