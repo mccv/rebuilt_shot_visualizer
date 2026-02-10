@@ -93,57 +93,116 @@ export function sweepSpeedAndAngle(
 }
 
 /**
- * Newton's-method refinement of launch angle at a fixed speed.
+ * Evaluate the two residuals for the joint solver:
+ *   f1 = height at target − desired height  (want 0)
+ *   f2 = lateral drift at target            (want 0)
+ *
+ * Returns { f1, f2, effRadSpeed, shotTime } or null if effRadSpeed is too low.
  */
-export function refineAngle(
+function evalResiduals(
+  speed: number, theta: number, phi: number,
+  radialVelo: number, tangentialVelo: number,
+  range: number, heightDiff: number,
+): { f1: number; f2: number; effRadSpeed: number; shotTime: number } | null {
+  const cosT = Math.cos(theta);
+  const sinT = Math.sin(theta);
+  const hSpeed = speed * cosT;
+
+  const effRadSpeed = hSpeed * Math.cos(phi) + radialVelo;
+  if (effRadSpeed <= 0.1) return null;
+
+  const shotTime = range / effRadSpeed;
+  const height = speed * sinT * shotTime - 0.5 * GRAVITY * shotTime * shotTime;
+  const f1 = height - heightDiff;
+
+  const lateralVelo = hSpeed * Math.sin(phi) + tangentialVelo;
+  const f2 = lateralVelo * shotTime;
+
+  return { f1, f2, effRadSpeed, shotTime };
+}
+
+/**
+ * Joint 2D Newton refinement of launch angle (theta) and turret angle (phi).
+ *
+ * Simultaneously zeros out:
+ *   f1 = height error at target
+ *   f2 = lateral drift at target
+ *
+ * Uses a 2×2 finite-difference Jacobian, analytically inverted.
+ * When fixedTheta is true, holds theta constant and runs 1D Newton on phi alone.
+ */
+export function refineShot(
   speed: number, initialTheta: number,
   tangentialVelo: number, radialVelo: number,
   range: number, heightDiff: number,
   clampMinDeg: number, clampMaxDeg: number,
+  fixedTheta: boolean = false,
 ): RefineResult {
   const clampMin = Math.max(clampMinDeg * Math.PI / 180, 0.05);
   const clampMax = Math.min(clampMaxDeg * Math.PI / 180, Math.PI / 2 - 0.05);
+  const phiMin = -Math.PI / 2 + 0.05;
+  const phiMax = Math.PI / 2 - 0.05;
 
   let theta = initialTheta;
+  // Seed turret angle from the geometric approximation
+  let phi = Math.atan2(-tangentialVelo, speed * Math.cos(theta));
   let shotTime = 0;
-  let turretAdjRad = 0;
+
+  const delta = 0.0001; // finite-difference step
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    for (let i = 0; i < 20; i++) {
-      const cosT = Math.cos(theta);
-      const sinT = Math.sin(theta);
-      const hSpeed = speed * cosT;
-
-      turretAdjRad = Math.atan2(-tangentialVelo, hSpeed);
-      const cosTurret = Math.cos(turretAdjRad);
-      const effRadSpeed = hSpeed * cosTurret + radialVelo;
-
-      if (effRadSpeed <= 0.1) {
-        theta = Math.max(theta - 0.1, clampMin);
+    for (let i = 0; i < 25; i++) {
+      const r0 = evalResiduals(speed, theta, phi, radialVelo, tangentialVelo, range, heightDiff);
+      if (!r0) {
+        // effRadSpeed too low — reduce theta to increase hSpeed
+        if (!fixedTheta) theta = Math.max(theta - 0.1, clampMin);
+        // Re-seed phi for the new theta
+        phi = Math.atan2(-tangentialVelo, speed * Math.cos(theta));
         continue;
       }
 
-      shotTime = range / effRadSpeed;
-      const h = speed * sinT * shotTime - 0.5 * GRAVITY * shotTime * shotTime;
-      const error = h - heightDiff;
+      shotTime = r0.shotTime;
 
-      if (Math.abs(error) < 0.001) break;
+      // Check convergence
+      if (Math.abs(r0.f1) < 0.001 && Math.abs(r0.f2) < 0.001) break;
 
-      // Finite-difference derivative dH/dθ
-      const dTheta = 0.0001;
-      const cosTp = Math.cos(theta + dTheta);
-      const sinTp = Math.sin(theta + dTheta);
-      const hSpeedP = speed * cosTp;
-      const turretP = Math.atan2(-tangentialVelo, hSpeedP);
-      const effP = hSpeedP * Math.cos(turretP) + radialVelo;
-      const tP = effP > 0.1 ? range / effP : shotTime;
-      const hP = speed * sinTp * tP - 0.5 * GRAVITY * tP * tP;
+      if (fixedTheta) {
+        // ── 1D Newton on phi only ─────────────────────────────
+        const rPhi = evalResiduals(speed, theta, phi + delta, radialVelo, tangentialVelo, range, heightDiff);
+        if (!rPhi) break;
 
-      const dH = (hP - h) / dTheta;
-      if (Math.abs(dH) < 0.0001) break;
+        const df2_dphi = (rPhi.f2 - r0.f2) / delta;
+        if (Math.abs(df2_dphi) < 0.0001) break;
 
-      theta -= error / dH;
-      theta = Math.max(clampMin, Math.min(clampMax, theta));
+        phi -= r0.f2 / df2_dphi;
+        phi = Math.max(phiMin, Math.min(phiMax, phi));
+      } else {
+        // ── 2D Newton on (theta, phi) ─────────────────────────
+        const rTheta = evalResiduals(speed, theta + delta, phi, radialVelo, tangentialVelo, range, heightDiff);
+        const rPhi   = evalResiduals(speed, theta, phi + delta, radialVelo, tangentialVelo, range, heightDiff);
+        if (!rTheta || !rPhi) break;
+
+        // Jacobian entries
+        const df1_dtheta = (rTheta.f1 - r0.f1) / delta;
+        const df1_dphi   = (rPhi.f1   - r0.f1) / delta;
+        const df2_dtheta = (rTheta.f2 - r0.f2) / delta;
+        const df2_dphi   = (rPhi.f2   - r0.f2) / delta;
+
+        // Determinant of the 2×2 Jacobian
+        const det = df1_dtheta * df2_dphi - df1_dphi * df2_dtheta;
+        if (Math.abs(det) < 1e-10) break;
+
+        // J⁻¹ · [f1, f2]
+        const invDet = 1 / det;
+        const dTheta = invDet * ( df2_dphi * r0.f1 - df1_dphi * r0.f2);
+        const dPhi   = invDet * (-df2_dtheta * r0.f1 + df1_dtheta * r0.f2);
+
+        theta -= dTheta;
+        phi   -= dPhi;
+
+        theta = Math.max(clampMin, Math.min(clampMax, theta));
+        phi   = Math.max(phiMin, Math.min(phiMax, phi));
+      }
     }
 
     // Check if converged solution is descending
@@ -151,24 +210,27 @@ export function refineAngle(
     if (vy < 0) break; // descending — done
 
     // Ascending — bump steeper and retry once
+    if (fixedTheta) break; // can't adjust theta in fixed mode
     theta = Math.min(theta + 0.15, clampMax);
+    // Re-seed phi for new theta
+    phi = Math.atan2(-tangentialVelo, speed * Math.cos(theta));
   }
 
-  return { angle: theta, shotTime, turretAdjRad };
+  return { angle: theta, shotTime, turretAdjRad: phi };
 }
 
 /**
- * Validate a (speed, angle) candidate and build a ShotResult.
- * Checks height error, ceiling, and descent constraints.
+ * Validate a (speed, angle, turretAdj) candidate and build a ShotResult.
+ * Checks height error, ceiling, descent, and lateral drift constraints.
  * Returns null if any check fails.
  */
 function validateAndBuildResult(
-  speed: number, angle: number, range: number, heightDiff: number, p: Params,
+  speed: number, angle: number, turretAdj: number,
+  range: number, heightDiff: number, p: Params,
 ): ShotResult | null {
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
   const hSpeed = speed * cosA;
-  const turretAdj = Math.atan2(-p.tangentialVelo, hSpeed);
   const effRadSpeed = hSpeed * Math.cos(turretAdj) + p.radialVelo;
 
   if (effRadSpeed <= 0.1) return null;
@@ -189,6 +251,11 @@ function validateAndBuildResult(
   // Must be descending at least as fast as the threshold (maxVyAtTarget is negative)
   if (vyAtTarget > p.maxVyAtTarget) return null;
 
+  // Lateral drift: residual lateral velocity × flight time
+  const lateralVelo = hSpeed * Math.sin(turretAdj) + p.tangentialVelo;
+  const lateralDrift = lateralVelo * t;
+  if (p.maxLateralDrift > 0 && Math.abs(lateralDrift) > p.maxLateralDrift) return null;
+
   // Descent angle: angle below horizontal at target (positive = descending)
   const descentAngleDeg = Math.atan2(-vyAtTarget, effRadSpeed) * 180 / Math.PI;
 
@@ -200,6 +267,8 @@ function validateAndBuildResult(
     descentAngleDeg,
     apexHeight,
     heightError,
+    lateralDrift,
+    turretAdjRad: turretAdj,
     range,
   };
 }
@@ -213,19 +282,17 @@ function trySpeedWithNewton(
 ): ShotResult | null {
   const aMin = p.angleMode === 'fixed' ? p.fixedAngle : p.minAngle;
   const aMax = p.angleMode === 'fixed' ? p.fixedAngle : p.maxAngle;
+  const isFixedAngle = p.angleMode === 'fixed';
 
-  let angle = seedAngle;
-  if (p.angleMode !== 'fixed') {
-    const ref = refineAngle(
-      speed, angle,
-      p.tangentialVelo, p.radialVelo,
-      range, heightDiff,
-      aMin, aMax,
-    );
-    angle = ref.angle;
-  }
+  const ref = refineShot(
+    speed, isFixedAngle ? aMin * Math.PI / 180 : seedAngle,
+    p.tangentialVelo, p.radialVelo,
+    range, heightDiff,
+    aMin, aMax,
+    isFixedAngle,
+  );
 
-  return validateAndBuildResult(speed, angle, range, heightDiff, p);
+  return validateAndBuildResult(speed, ref.angle, ref.turretAdjRad, range, heightDiff, p);
 }
 
 /**
@@ -342,10 +409,11 @@ export function computeDetailedShot(
   const hSpeed = speed * cosA;
   const vLaunch = speed * sinA;
 
-  const turretAdjRad = Math.atan2(-tangentialVelo, hSpeed);
+  // Use the optimized turret angle from the joint solver
+  const turretAdjRad = result.turretAdjRad;
   const effRadSpeed = hSpeed * Math.cos(turretAdjRad) + radialVelo;
 
-  // Lateral velocity: turret compensates for tangential motion, but not perfectly
+  // Lateral velocity: residual after turret compensation
   const lateralVelo = hSpeed * Math.sin(turretAdjRad) + tangentialVelo;
 
   const range = result.range;

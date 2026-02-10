@@ -21,6 +21,7 @@ const PARAM_KEYS: Record<string, { id: string; type: 'range' | 'select' }> = {
   targetY:        { id: 'targetY',        type: 'range' },
   targetZ:        { id: 'targetZ',        type: 'range' },
   maxVyAtTarget:  { id: 'maxVyAtTarget',  type: 'range' },
+  maxLateralDrift: { id: 'maxLateralDrift', type: 'range' },
   colorMode:      { id: 'colorMode',      type: 'select' },
 };
 

@@ -12,17 +12,22 @@ export function renderTopView(canvasEl: HTMLCanvasElement, shot: DetailedShot): 
   const pw = w - pad.left - pad.right;
   const ph = h - pad.top - pad.bottom;
 
+  // Reserve pixel space left of shooter for radial velocity arrows (±3 m/s).
+  // Arrow scale is derived from the reserved space so it always fits.
+  const maxRadialDisplay = 3;  // m/s — defines the arrow range we guarantee
+  const originOffsetPx = pw * 0.2;
+  const robotVArrowScale = (originOffsetPx - 10) / maxRadialDisplay;  // px per m/s
+
   // World bounds
   const xMax = shot.range * 1.08;
   const maxLateral = Math.abs(shot.tangentialVelo) * shot.flightTime;
   const yExtent = Math.max(maxLateral * 1.5, shot.range * 0.15, 1.0);
-  const scaleX = pw / xMax;
+  const scaleX = (pw - originOffsetPx) / xMax;
   const scaleY = ph / (2 * yExtent);
   const sc = Math.min(scaleX, scaleY);
 
-  const cx0 = pad.left;
   const cy0 = pad.top + ph / 2;
-  const toX = (wx: number) => cx0 + wx * sc;
+  const toX = (wx: number) => pad.left + originOffsetPx + wx * sc;
   const toY = (wy: number) => cy0 + wy * sc;
 
   c.fillStyle = '#0d1117';
@@ -77,14 +82,12 @@ export function renderTopView(canvasEl: HTMLCanvasElement, shot: DetailedShot): 
   lp.addLine(toX(0), toY(0), toX(shot.range), toY(0), 4);
 
   // Robot velocity vectors
-  const vMaxComponent = Math.max(1, Math.abs(shot.tangentialVelo), Math.abs(shot.radialVelo), shot.hSpeed);
-  const vScale = Math.min(80, pw * 0.18) / vMaxComponent;
   const sx = toX(0), sy = toY(0);
 
-  // Radial velocity
+  // Radial velocity (positive = away from hub, i.e. leftward in this view)
   if (Math.abs(shot.radialVelo) > 0.05) {
     drawArrow(c, sx, sy,
-      sx + shot.radialVelo * vScale * 3,
+      sx - shot.radialVelo * robotVArrowScale,
       sy,
       '#f0883e', 'radial: ' + shot.radialVelo.toFixed(1) + ' m/s', undefined, lp);
   }
@@ -93,7 +96,7 @@ export function renderTopView(canvasEl: HTMLCanvasElement, shot: DetailedShot): 
   if (Math.abs(shot.tangentialVelo) > 0.05) {
     drawArrow(c, sx, sy,
       sx,
-      sy + shot.tangentialVelo * vScale * 3,
+      sy + shot.tangentialVelo * robotVArrowScale,
       '#da3633', 'tangential: ' + shot.tangentialVelo.toFixed(1) + ' m/s', undefined, lp);
   }
 

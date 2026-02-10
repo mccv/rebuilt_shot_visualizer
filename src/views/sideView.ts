@@ -115,29 +115,38 @@ export function renderSideView(canvasEl: HTMLCanvasElement, shot: DetailedShot):
   drawArrow(c, launchPx, launchPy,
     launchPx + shot.effRadSpeed * vScale,
     launchPy,
-    '#3fb950aa', 'h: ' + shot.effRadSpeed.toFixed(1) + ' m/s', undefined, lp);
+    '#3fb950aa', 'horiz ' + shot.effRadSpeed.toFixed(1) + ' m/s', undefined, lp);
 
   // Vertical component
   drawArrow(c, launchPx, launchPy,
     launchPx,
     launchPy - shot.vLaunch * vScale,
-    '#3fb950aa', 'v: ' + shot.vLaunch.toFixed(1) + ' m/s', undefined, lp);
+    '#3fb950aa', 'vert ' + shot.vLaunch.toFixed(1) + ' m/s', undefined, lp);
 
   // Velocity at target (descent)
   const targPx = tx, targPy = tz;
   drawArrow(c, targPx, targPy,
     targPx + shot.vxTarget * vScale,
     targPy - shot.vzTarget * vScale,
-    '#f85149', Math.sqrt(shot.vxTarget ** 2 + shot.vzTarget ** 2).toFixed(1) + ' m/s', undefined, lp);
+    '#f85149', 'descent ' + Math.abs(shot.vzTarget).toFixed(1) + ' m/s', undefined, lp);
+
+  // Descent angle arc at target
+  const descentCanvasAngle = Math.atan2(-shot.vzTarget, shot.vxTarget);
+  const descentAngleDeg = descentCanvasAngle * 180 / Math.PI;
+  const descentArcR = 45;
+  drawAngleArc(c, targPx, targPy, descentArcR, 0, descentCanvasAngle, '#f85149',
+    descentAngleDeg.toFixed(1) + '\u00B0', lp);
 
   // Gravity arrow near apex
   const gLen = 35;
   const gx = toX(shot.xApex) + 25, gy = toY(shot.zApex) + 5;
   drawArrow(c, gx, gy, gx, gy + gLen, '#8b949e', 'g', 7, lp);
 
-  // Hood angle arc at launch
+  // Hood angle arc at launch — sweep to the actual visual launch vector angle
+  // (canvas y-axis is inverted, so the arrow's canvas angle is -atan2(vz, vx))
   const arcR = 55;
-  drawAngleArc(c, launchPx, launchPy, arcR, 0, -shot.angleRad, '#f0883e',
+  const launchCanvasAngle = Math.atan2(-shot.vzLaunch, shot.vxLaunch);
+  drawAngleArc(c, launchPx, launchPy, arcR, 0, launchCanvasAngle, '#f0883e',
     shot.hoodAngleDeg.toFixed(1) + '\u00B0', lp);
 
   // Resolve overlaps and draw

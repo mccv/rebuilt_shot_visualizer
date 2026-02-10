@@ -11,6 +11,8 @@ export interface ShotResult {
   descentAngleDeg: number;
   apexHeight: number;
   heightError: number;
+  lateralDrift: number;
+  turretAdjRad: number;
   range: number;
 }
 
@@ -33,6 +35,7 @@ export interface Params {
   targetY: number;
   targetZ: number;
   maxVyAtTarget: number;
+  maxLateralDrift: number;
 }
 
 /** Single point on a sampled trajectory. */
@@ -141,7 +144,7 @@ export interface SweepResult {
   error: number;
 }
 
-/** Refinement result from refineAngle. */
+/** Refinement result from refineShot. */
 export interface RefineResult {
   angle: number;
   shotTime: number;

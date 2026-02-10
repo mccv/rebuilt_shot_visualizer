@@ -37,6 +37,7 @@ export function readParams(): Params {
     targetY:        parseFloat((document.getElementById('targetY') as HTMLInputElement).value),
     targetZ:        parseFloat((document.getElementById('targetZ') as HTMLInputElement).value),
     maxVyAtTarget:  parseFloat((document.getElementById('maxVyAtTarget') as HTMLInputElement).value),
+    maxLateralDrift: parseFloat((document.getElementById('maxLateralDrift') as HTMLInputElement).value),
   };
 }
 
@@ -57,6 +58,7 @@ export function updateValueDisplays(): void {
   document.getElementById('targetY-val')!.textContent        = val('targetY').toFixed(2) + ' m';
   document.getElementById('targetZ-val')!.textContent        = val('targetZ').toFixed(2) + ' m';
   document.getElementById('maxVyAtTarget-val')!.textContent  = val('maxVyAtTarget').toFixed(1) + ' m/s';
+  document.getElementById('maxLateralDrift-val')!.textContent = val('maxLateralDrift').toFixed(2) + ' m';
 }
 
 export function scheduleRecalc(): void {
