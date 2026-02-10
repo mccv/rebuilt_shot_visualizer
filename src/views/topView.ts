@@ -84,10 +84,10 @@ export function renderTopView(canvasEl: HTMLCanvasElement, shot: DetailedShot): 
   // Robot velocity vectors
   const sx = toX(0), sy = toY(0);
 
-  // Radial velocity (positive = away from hub, i.e. leftward in this view)
+  // Radial velocity (positive = toward hub, i.e. rightward in this view)
   if (Math.abs(shot.radialVelo) > 0.05) {
     drawArrow(c, sx, sy,
-      sx - shot.radialVelo * robotVArrowScale,
+      sx + shot.radialVelo * robotVArrowScale,
       sy,
       '#f0883e', 'radial: ' + shot.radialVelo.toFixed(1) + ' m/s', undefined, lp);
   }
